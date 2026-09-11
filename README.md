@@ -18,6 +18,49 @@ TrustLoop therefore treats the ML prediction as one signal. The system combines 
 
 Traditional return systems often reduce a case to a single risk score. That can make the decision difficult to explain and can create problems when different pieces of evidence disagree.
 
+# System Architecture
+
+The current application is a full-stack TypeScript application using TanStack Start, React, Supabase/PostgreSQL, and a server-side TrustLoop decision pipeline.
+
+```mermaid
+flowchart TB
+    UI[TrustLoop Web App\nReact + TanStack Start]
+    API[Server Functions / Application API]
+    DB[(Supabase PostgreSQL)]
+    STORAGE[(Supabase Storage\nReturn Evidence)]
+
+    ML[ML Engine\n41 Features]
+    XGB[XGBoost\n139 Gradient-Boosted Trees]
+    LR[Logistic Regression\nLinear Baseline]
+    DT[Decision Tree\nCART Baseline]
+
+    POLICY[Policy Engine\nDeterministic Rules]
+    BEHAV[Behaviour Analysis\nAccount History Signals]
+    VISION[Vision Analysis\nProduct Image Evidence]
+    FUSION[Evidence Fusion\nTrust Score + Agreement + Conflicts]
+    DECIDE[Decision Engine\nExplicit Decision Rules]
+    REVIEW[Human Review]
+    AUDIT[Audit Events]
+
+    UI --> API
+    API --> DB
+    API --> ML
+    API --> POLICY
+    API --> BEHAV
+    API --> VISION
+    API --> FUSION
+    FUSION --> DECIDE
+    DECIDE --> DB
+    API --> AUDIT
+    AUDIT --> DB
+    VISION --> STORAGE
+    REVIEW --> DB
+
+    ML --> XGB
+    ML --> LR
+    ML --> DT
+```
+
 TrustLoop creates a complete decision trail:
 
 ```text
@@ -99,48 +142,6 @@ The system is designed so that a model prediction is **not treated as ground tru
 
 ---
 
-# System Architecture
-
-The current application is a full-stack TypeScript application using TanStack Start, React, Supabase/PostgreSQL, and a server-side TrustLoop decision pipeline.
-
-```mermaid
-flowchart TB
-    UI[TrustLoop Web App\nReact + TanStack Start]
-    API[Server Functions / Application API]
-    DB[(Supabase PostgreSQL)]
-    STORAGE[(Supabase Storage\nReturn Evidence)]
-
-    ML[ML Engine\n41 Features]
-    XGB[XGBoost\n139 Gradient-Boosted Trees]
-    LR[Logistic Regression\nLinear Baseline]
-    DT[Decision Tree\nCART Baseline]
-
-    POLICY[Policy Engine\nDeterministic Rules]
-    BEHAV[Behaviour Analysis\nAccount History Signals]
-    VISION[Vision Analysis\nProduct Image Evidence]
-    FUSION[Evidence Fusion\nTrust Score + Agreement + Conflicts]
-    DECIDE[Decision Engine\nExplicit Decision Rules]
-    REVIEW[Human Review]
-    AUDIT[Audit Events]
-
-    UI --> API
-    API --> DB
-    API --> ML
-    API --> POLICY
-    API --> BEHAV
-    API --> VISION
-    API --> FUSION
-    FUSION --> DECIDE
-    DECIDE --> DB
-    API --> AUDIT
-    AUDIT --> DB
-    VISION --> STORAGE
-    REVIEW --> DB
-
-    ML --> XGB
-    ML --> LR
-    ML --> DT
-```
 
 ### Architecture in plain language
 
