@@ -1,0 +1,364 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * TrustLoop Enterprise Design System
+ * Inspired by modern, human-designed Trust & Safety platforms.
+ * Palette: Deep Trust Navy (#0B1F3A), Primary Blue (#1769E0), Accent Blue (#2F80FF),
+ * Cyan (#00B8D9), Soft Blue (#EAF3FF), Very Light Background (#F7F9FC), Pure White (#FFFFFF).
+ */
+
+@theme inline {
+  --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --shadow-panel: 0 3px 0 0 #E2E8F0, 0 8px 24px -4px rgba(11, 31, 58, 0.08), 0 1px 3px rgba(11, 31, 58, 0.04);
+  --shadow-lift: 0 5px 0 0 #CBD5E1, 0 16px 32px -6px rgba(11, 31, 58, 0.14);
+  --shadow-floating: 0 8px 0 0 rgba(11, 31, 58, 0.06), 0 20px 40px -8px rgba(23, 105, 224, 0.22);
+}
+
+:root {
+  --radius: 0.875rem;
+  /* 14px modern enterprise curve */
+  --background: #F7F9FC;
+  --foreground: #0B1F3A;
+  --card: #FFFFFF;
+  --card-foreground: #0B1F3A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0B1F3A;
+  --primary: #1769E0;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EAF3FF;
+  --secondary-foreground: #0B1F3A;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #EAF3FF;
+  --accent-foreground: #1769E0;
+  --destructive: #E5484D;
+  --destructive-foreground: #FFFFFF;
+  --success: #12A878;
+  --success-foreground: #FFFFFF;
+  --warning: #F59E0B;
+  --warning-foreground: #0B1F3A;
+  --ink: #0B1F3A;
+  --ink-foreground: #FFFFFF;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #1769E0;
+  --chart-1: #1769E0;
+  --chart-2: #12A878;
+  --chart-3: #F59E0B;
+  --chart-4: #E5484D;
+  --chart-5: #00B8D9;
+}
+
+.dark {
+  --background: #0B1F3A;
+  --foreground: #F8FAFC;
+  --card: #102A4E;
+  --card-foreground: #F8FAFC;
+  --popover: #102A4E;
+  --popover-foreground: #F8FAFC;
+  --primary: #2F80FF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #163663;
+  --secondary-foreground: #F8FAFC;
+  --muted: #163663;
+  --muted-foreground: #94A3B8;
+  --accent: #194077;
+  --accent-foreground: #60A5FA;
+  --destructive: #F87171;
+  --destructive-foreground: #0B1F3A;
+  --success: #34D399;
+  --success-foreground: #0B1F3A;
+  --warning: #FBBF24;
+  --warning-foreground: #0B1F3A;
+  --ink: #0B1F3A;
+  --ink-foreground: #F8FAFC;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #2F80FF;
+  --chart-1: #2F80FF;
+  --chart-2: #34D399;
+  --chart-3: #FBBF24;
+  --chart-4: #F87171;
+  --chart-5: #00B8D9;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.028em;
+  }
+}
+
+/* Subtle atmospheric backdrop grid */
+@utility grid-backdrop {
+  background-image:
+    linear-gradient(to right, rgba(23, 105, 224, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(23, 105, 224, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ==========================================================================
+   SOLID 3D TACTILE BUTTONS & BOXES SYSTEM (All Over The Webapp)
+   ========================================================================== */
+
+.btn-3d-primary {
+  background: #1769E0;
+  color: #FFFFFF !important;
+  border: 1px solid #1355B5;
+  box-shadow: 0 4px 0 0 #0E4494, 0 8px 20px -2px rgba(23, 105, 224, 0.4);
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  font-weight: 700;
+}
+
+.btn-3d-primary:hover {
+  transform: translateY(-2px);
+  background: #145ECC;
+  box-shadow: 0 6px 0 0 #0E4494, 0 14px 26px -2px rgba(23, 105, 224, 0.48);
+}
+
+.btn-3d-primary:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #0E4494, 0 3px 8px rgba(23, 105, 224, 0.3);
+}
+
+.btn-3d-secondary {
+  background: #FFFFFF;
+  color: #0B1F3A !important;
+  border: 1px solid #CBD5E1;
+  box-shadow: 0 3px 0 0 #CBD5E1, 0 6px 16px -2px rgba(11, 31, 58, 0.08);
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  font-weight: 600;
+}
+
+.btn-3d-secondary:hover {
+  transform: translateY(-2px);
+  border-color: #94A3B8;
+  box-shadow: 0 5px 0 0 #94A3B8, 0 12px 22px -2px rgba(11, 31, 58, 0.12);
+}
+
+.btn-3d-secondary:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #CBD5E1, 0 2px 5px rgba(11, 31, 58, 0.05);
+}
+
+.box-3d {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 3px 0 0 #E2E8F0, 0 8px 24px -4px rgba(11, 31, 58, 0.07), 0 1px 3px rgba(11, 31, 58, 0.04);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.box-3d:hover {
+  box-shadow: 0 5px 0 0 #CBD5E1, 0 16px 32px -4px rgba(11, 31, 58, 0.12);
+}
+
+.box-3d-subtle {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 2.5px 0 0 #E2E8F0, 0 6px 16px -2px rgba(11, 31, 58, 0.06);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.box-3d-subtle:hover {
+  transform: translateY(-2px);
+  border-color: #BFDBFE;
+  box-shadow: 0 4.5px 0 0 #93C5FD, 0 12px 22px -2px rgba(23, 105, 224, 0.14);
+}
+
+/* ==========================================================================
+   REAL 3D OCEAN WAVE SIMULATION (Organic Swells, Depth & Foaming Crests)
+   ========================================================================== */
+
+@keyframes ocean-swell-1 {
+  0% {
+    transform: translate3d(0, 0, 0) scaleY(1);
+  }
+
+  30% {
+    transform: translate3d(-15%, -8px, 0) scaleY(1.08);
+  }
+
+  65% {
+    transform: translate3d(-35%, 4px, 0) scaleY(0.96);
+  }
+
+  100% {
+    transform: translate3d(-50%, 0, 0) scaleY(1);
+  }
+}
+
+@keyframes ocean-swell-2 {
+  0% {
+    transform: translate3d(-40%, 0, 0) scaleY(1.04);
+  }
+
+  40% {
+    transform: translate3d(-18%, -12px, 0) scaleY(0.95);
+  }
+
+  75% {
+    transform: translate3d(5%, 6px, 0) scaleY(1.06);
+  }
+
+  100% {
+    transform: translate3d(-40%, 0, 0) scaleY(1.04);
+  }
+}
+
+@keyframes ocean-swell-3 {
+  0% {
+    transform: translate3d(0, 0, 0) scaleY(0.97);
+  }
+
+  35% {
+    transform: translate3d(-22%, 10px, 0) scaleY(1.07);
+  }
+
+  70% {
+    transform: translate3d(-42%, -9px, 0) scaleY(1.02);
+  }
+
+  100% {
+    transform: translate3d(-50%, 0, 0) scaleY(0.97);
+  }
+}
+
+@keyframes ocean-swell-4 {
+  0% {
+    transform: translate3d(-25%, 0, 0) scaleY(1.02);
+  }
+
+  50% {
+    transform: translate3d(-5%, -14px, 0) scaleY(0.98);
+  }
+
+  100% {
+    transform: translate3d(-25%, 0, 0) scaleY(1.02);
+  }
+}
+
+@keyframes float-subtle {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes float-delayed {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+.ocean-wave-layer-1 {
+  animation: ocean-swell-1 20s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+  will-change: transform;
+}
+
+.ocean-wave-layer-2 {
+  animation: ocean-swell-2 26s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+  will-change: transform;
+}
+
+.ocean-wave-layer-3 {
+  animation: ocean-swell-3 17s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+  will-change: transform;
+}
+
+.ocean-wave-layer-4 {
+  animation: ocean-swell-4 22s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+  will-change: transform;
+}
+
+.float-card-1 {
+  animation: float-subtle 6s ease-in-out infinite;
+}
+
+.float-card-2 {
+  animation: float-delayed 7s ease-in-out infinite 1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .ocean-wave-layer-1,
+  .ocean-wave-layer-2,
+  .ocean-wave-layer-3,
+  .ocean-wave-layer-4,
+  .float-card-1,
+  .float-card-2 {
+    animation: none !important;
+  }
+}
