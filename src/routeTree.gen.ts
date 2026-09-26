@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as DataRouteImport } from './routes/data'
+import { Route as FraudRingsRouteImport } from './routes/fraud-rings'
 import { Route as LearningRouteImport } from './routes/learning'
 import { Route as ReviewRouteImport } from './routes/review'
+import { Route as RiskMapRouteImport } from './routes/risk-map'
 import { Route as ReturnsIdRouteImport } from './routes/returns.$id'
 import { Route as ReturnsNewRouteImport } from './routes/returns.new'
 
@@ -32,6 +34,11 @@ const DataRoute = DataRouteImport.update({
   path: '/data',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FraudRingsRoute = FraudRingsRouteImport.update({
+  id: '/fraud-rings',
+  path: '/fraud-rings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LearningRoute = LearningRouteImport.update({
   id: '/learning',
   path: '/learning',
@@ -40,6 +47,11 @@ const LearningRoute = LearningRouteImport.update({
 const ReviewRoute = ReviewRouteImport.update({
   id: '/review',
   path: '/review',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RiskMapRoute = RiskMapRouteImport.update({
+  id: '/risk-map',
+  path: '/risk-map',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReturnsIdRoute = ReturnsIdRouteImport.update({
@@ -57,8 +69,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/data': typeof DataRoute
+  '/fraud-rings': typeof FraudRingsRoute
   '/learning': typeof LearningRoute
   '/review': typeof ReviewRoute
+  '/risk-map': typeof RiskMapRoute
   '/returns/$id': typeof ReturnsIdRoute
   '/returns/new': typeof ReturnsNewRoute
 }
@@ -66,8 +80,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/data': typeof DataRoute
+  '/fraud-rings': typeof FraudRingsRoute
   '/learning': typeof LearningRoute
   '/review': typeof ReviewRoute
+  '/risk-map': typeof RiskMapRoute
   '/returns/$id': typeof ReturnsIdRoute
   '/returns/new': typeof ReturnsNewRoute
 }
@@ -76,8 +92,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/data': typeof DataRoute
+  '/fraud-rings': typeof FraudRingsRoute
   '/learning': typeof LearningRoute
   '/review': typeof ReviewRoute
+  '/risk-map': typeof RiskMapRoute
   '/returns/$id': typeof ReturnsIdRoute
   '/returns/new': typeof ReturnsNewRoute
 }
@@ -87,8 +105,10 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/data'
+    | '/fraud-rings'
     | '/learning'
     | '/review'
+    | '/risk-map'
     | '/returns/$id'
     | '/returns/new'
   fileRoutesByTo: FileRoutesByTo
@@ -96,8 +116,10 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/data'
+    | '/fraud-rings'
     | '/learning'
     | '/review'
+    | '/risk-map'
     | '/returns/$id'
     | '/returns/new'
   id:
@@ -105,8 +127,10 @@ export interface FileRouteTypes {
     | '/'
     | '/audit'
     | '/data'
+    | '/fraud-rings'
     | '/learning'
     | '/review'
+    | '/risk-map'
     | '/returns/$id'
     | '/returns/new'
   fileRoutesById: FileRoutesById
@@ -115,8 +139,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
   DataRoute: typeof DataRoute
+  FraudRingsRoute: typeof FraudRingsRoute
   LearningRoute: typeof LearningRoute
   ReviewRoute: typeof ReviewRoute
+  RiskMapRoute: typeof RiskMapRoute
   ReturnsIdRoute: typeof ReturnsIdRoute
   ReturnsNewRoute: typeof ReturnsNewRoute
 }
@@ -144,6 +170,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DataRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/fraud-rings': {
+      id: '/fraud-rings'
+      path: '/fraud-rings'
+      fullPath: '/fraud-rings'
+      preLoaderRoute: typeof FraudRingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/learning': {
       id: '/learning'
       path: '/learning'
@@ -156,6 +189,13 @@ declare module '@tanstack/react-router' {
       path: '/review'
       fullPath: '/review'
       preLoaderRoute: typeof ReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/risk-map': {
+      id: '/risk-map'
+      path: '/risk-map'
+      fullPath: '/risk-map'
+      preLoaderRoute: typeof RiskMapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/returns/$id': {
@@ -179,8 +219,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
   DataRoute: DataRoute,
+  FraudRingsRoute: FraudRingsRoute,
   LearningRoute: LearningRoute,
   ReviewRoute: ReviewRoute,
+  RiskMapRoute: RiskMapRoute,
   ReturnsIdRoute: ReturnsIdRoute,
   ReturnsNewRoute: ReturnsNewRoute,
 }

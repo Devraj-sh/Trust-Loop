@@ -63,7 +63,7 @@ export interface Signal {
 }
 
 export interface EvidenceItem {
-  source: "ml" | "policy" | "vision" | "behaviour";
+  source: "ml" | "policy" | "vision" | "behaviour" | "network" | "geo";
   label: string;
   verdict: string;
   /** 0-1, where 1 means "fully supports approving the return as claimed". */
@@ -71,6 +71,25 @@ export interface EvidenceItem {
   weight: number;
   detail: string;
   available: boolean;
+}
+
+export interface LayeredAdjustment {
+  source: "network" | "geography" | "evidence";
+  title: string;
+  points: number;
+  reason: string;
+  capped: boolean;
+}
+
+export interface InvestigationScoreResult {
+  baseTrustScore: number;
+  networkAdjustment: number;
+  geoAdjustment: number;
+  evidenceAdjustment: number;
+  finalInvestigationScore: number; // 0-100
+  investigationPriority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  adjustments: LayeredAdjustment[];
+  flaggedReasons: string[];
 }
 
 export interface Conflict {

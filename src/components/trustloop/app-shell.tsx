@@ -1,14 +1,16 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import { useJudgeMode } from "@/lib/trustloop/judge-mode";
+import { ShieldAlert, Sparkles, Network, MapPin } from "lucide-react";
 
 const NAV = [
   { to: "/", label: "Overview" },
+  { to: "/review", label: "Returns" },
+  { to: "/fraud-rings", label: "Fraud rings" },
+  { to: "/risk-map", label: "Risk map" },
   { to: "/returns/new", label: "New return" },
-  { to: "/review", label: "Review queue" },
-  { to: "/learning", label: "Learning loop" },
   { to: "/audit", label: "Audit trail" },
-  { to: "/data", label: "Data requirements" },
+  { to: "/learning", label: "Model intelligence" },
 ] as const;
 
 function TrustLoopLogo() {
@@ -20,7 +22,7 @@ function TrustLoopLogo() {
         className="h-9 sm:h-10 w-auto object-contain transition-transform group-hover:scale-[1.02]"
       />
       <span className="hidden md:inline-block rounded bg-[#EAF3FF] text-[#1769E0] text-[9px] font-mono font-bold px-1.5 py-0.5 border border-[#BFDBFE] shadow-xs">
-        ENTERPRISE
+        TRUSTLOOP 2.0
       </span>
     </Link>
   );
@@ -46,19 +48,19 @@ export function AppShell({
         Skip to content
       </a>
 
-      {/* Main Top Navigation matching Reference 1 */}
+      {/* Main Top Navigation */}
       <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white shadow-xs">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <TrustLoopLogo />
 
-          <nav aria-label="Main" className="flex items-center gap-1.5 overflow-x-auto py-1">
+          <nav aria-label="Main" className="flex items-center gap-1 overflow-x-auto py-1">
             {NAV.map((item) => {
               const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
               return (
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-semibold transition-all ${
+                  className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
                     active
                       ? "bg-white text-[#1769E0] border-2 border-[#1769E0] shadow-[0_2px_0_0_#1769E0] font-bold"
                       : "text-slate-600 hover:text-[#0B1F3A] hover:bg-slate-100"
@@ -74,16 +76,17 @@ export function AppShell({
             <Link
               to="/returns/new"
               search={{ scenario: "scenario-4-conflict" }}
-              className="inline-flex items-center gap-1.5 rounded-full btn-3d-primary px-4 py-2 text-xs font-bold"
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 text-white hover:bg-slate-800 px-3.5 py-1.5 text-xs font-bold transition-all shadow-xs"
+              title="Load Pre-configured Hero Fraud Ring Demo"
             >
-              <span>Analysis Scenario</span>
-              <span>&rarr;</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Load Fraud Ring Demo</span>
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Full-width Hero Slot (edge-to-edge, not in a box) */}
+      {/* Full-width Hero Slot */}
       {fullWidthHero}
 
       {/* Main Content Area */}
@@ -101,21 +104,20 @@ export function AppShell({
                 alt="TrustLoop"
                 className="h-8 w-auto object-contain"
               />
-              <span className="text-slate-400 font-normal">
-                — Return Decision Intelligence
+              <span className="text-slate-500 font-medium">
+                — Return Fraud Intelligence & Investigation Platform
               </span>
             </div>
             <p className="font-mono text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
-              ML Predicts · Evidence Explains · Humans Verify · The System Learns
+              ML Predicts · Evidence Explains · Graph Connects · Humans Verify
             </p>
           </div>
           <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-500">
             <p>
-              Trained on Brazilian e-commerce logistics history with 41 engineered behavioral features.
-              Decisions are auditable and governed by deterministic policy rules prior to ML evaluation.
+              TrustLoop 2.0 combines pre-trained ML models, deterministic policy logic, customer behavior vectors, AI visual evidence, fraud ring relationship graphs, and regional return hotspot normalization.
             </p>
             <p className="font-mono text-[11px] text-slate-400 shrink-0">
-              Supabase PostgreSQL · XGBoost Engine
+              Graph Engine · Geo Centroid Normalization · XGBoost
             </p>
           </div>
         </div>

@@ -1,8 +1,17 @@
-import type { Conflict, DecisionOutcome, EvidenceItem, ReasonCode } from "./domain";
+import type {
+  Conflict,
+  DecisionOutcome,
+  EvidenceItem,
+  InvestigationScoreResult,
+  LayeredAdjustment,
+  ReasonCode,
+} from "./domain";
 import type { PolicyResult } from "./policy";
 import type { BehaviourResult } from "./behaviour";
 import type { VisionResult } from "./vision-types";
 import type { ModelResult } from "@/lib/ml/engine";
+import type { NetworkRiskResult } from "./network";
+import type { GeoAdjustmentResult } from "./geo";
 
 export interface FusionResult {
   /** 0-100. High means the evidence agrees that the claim is genuine. */
@@ -21,8 +30,10 @@ export function fuseEvidence(input: {
   behaviour: BehaviourResult;
   vision: VisionResult | null;
   reason: ReasonCode;
+  network?: NetworkRiskResult | null;
+  geo?: GeoAdjustmentResult | null;
 }): FusionResult {
-  const { model, policy, behaviour, vision, reason } = input;
+  const { model, policy, behaviour, vision, reason, network, geo } = input;
   const evidence: EvidenceItem[] = [];
 
   evidence.push({
@@ -30,7 +41,7 @@ export function fuseEvidence(input: {
     label: `${model.modelLabel} return-risk model`,
     verdict: `${(model.riskScore * 100).toFixed(1)}% risk (${model.riskLevel})`,
     support: clamp(1 - model.riskScore),
-    weight: 0.35,
+    weight: 0.30,
     detail: `Trained on historical orders; top driver: ${model.contributions[0]?.feature ?? "n/a"}.`,
     available: true,
   });
@@ -40,7 +51,7 @@ export function fuseEvidence(input: {
     label: "Policy engine",
     verdict: policy.eligible ? "Eligible" : "Not eligible",
     support: policy.eligible ? 0.9 : 0,
-    weight: 0.2,
+    weight: 0.15,
     detail:
       policy.rules
         .filter((r) => !r.passed)
@@ -75,7 +86,7 @@ export function fuseEvidence(input: {
             ? "Photo supports the claim"
             : "Photo does not support the claim",
       support,
-      weight: vision.isFallback ? 0.1 : 0.3,
+      weight: vision.isFallback ? 0.1 : 0.20,
       detail: vision.summary,
       available: true,
     });
@@ -88,6 +99,35 @@ export function fuseEvidence(input: {
       weight: 0,
       detail: "No evidence image was attached to this return.",
       available: false,
+    });
+  }
+
+  // Network Evidence (TrustLoop 2.0)
+  if (network) {
+    const netWeight = network.ringId ? 0.15 : 0.05;
+    evidence.push({
+      source: "network",
+      label: "Fraud ring intelligence",
+      verdict: network.ringId
+        ? `Linked to ${network.ringId} (${network.networkRisk}% risk)`
+        : "Isolated account (low network risk)",
+      support: clamp(1 - network.networkRisk / 100),
+      weight: netWeight,
+      detail: network.reasons[0] || "No shared network entities.",
+      available: true,
+    });
+  }
+
+  // Geo Hotspot Evidence (TrustLoop 2.0)
+  if (geo) {
+    evidence.push({
+      source: "geo",
+      label: "Regional hotspot intelligence",
+      verdict: `${geo.areaName} (${geo.hotspotScore}/100, ${geo.riskTier})`,
+      support: clamp(1 - geo.hotspotScore / 100),
+      weight: 0.08,
+      detail: geo.reason,
+      available: true,
     });
   }
 
@@ -140,7 +180,102 @@ export function fuseEvidence(input: {
     });
   }
 
+  // Network Conflict
+  if (network?.ringId && model.riskScore < 0.35) {
+    conflicts.push({
+      id: "network_vs_model",
+      label: "High network risk contradicts low individual model risk",
+      detail: `The individual transaction appears normal, but the surrounding device/account graph is linked to fraud syndicate ${network.ringId}.`,
+    });
+  }
+
   return { trustScore: Math.round(trust * 100), agreement, evidence, conflicts };
+}
+
+/**
+ * TrustLoop 2.0 Layered Investigation Score Calculation
+ * Final Investigation Score = Base ML Risk + Bounded Network Adjustment + Bounded Geo Adjustment + Evidence Adjustment
+ */
+export function calculateInvestigationScore(input: {
+  baseTrustScore: number;
+  modelRiskScore: number; // 0-1
+  network?: NetworkRiskResult | null;
+  geo?: GeoAdjustmentResult | null;
+  conflictsCount: number;
+}): InvestigationScoreResult {
+  const { baseTrustScore, modelRiskScore, network, geo, conflictsCount } = input;
+  const adjustments: LayeredAdjustment[] = [];
+  const flaggedReasons: string[] = [];
+
+  const baseRiskPoints = Math.round(modelRiskScore * 100);
+
+  // 1. Network adjustment (capped at 25 points)
+  let netAdj = 0;
+  if (network && network.ringId) {
+    netAdj = Math.min(25, network.adjustment || 20);
+    adjustments.push({
+      source: "network",
+      title: "Network Ring Association",
+      points: netAdj,
+      reason: `${network.metrics.connectedAccounts} accounts connected through shared device infrastructure (${network.ringId}).`,
+      capped: netAdj >= 25,
+    });
+    flaggedReasons.push(`Connected to suspicious return cluster (${network.ringId})`);
+  }
+
+  // 2. Geographic adjustment (capped at 15 points)
+  let geoAdj = 0;
+  if (geo && geo.hotspotScore >= 40) {
+    geoAdj = Math.min(15, geo.adjustment || 8);
+    adjustments.push({
+      source: "geography",
+      title: "Regional Return Hotspot",
+      points: geoAdj,
+      reason: `Return originated from an area with elevated normalized return-risk (${geo.areaName}).`,
+      capped: geoAdj >= 15,
+    });
+    flaggedReasons.push(`Located in elevated return hotspot (${geo.areaName})`);
+  }
+
+  // 3. Evidence conflict adjustment (capped at 15 points)
+  let evAdj = 0;
+  if (conflictsCount > 0) {
+    evAdj = Math.min(15, conflictsCount * 8);
+    adjustments.push({
+      source: "evidence",
+      title: "Evidence Discrepancy",
+      points: evAdj,
+      reason: "Customer claim conflicts with visual evidence or policy expectations.",
+      capped: evAdj >= 15,
+    });
+    flaggedReasons.push("Customer claim conflicts with visual evidence");
+  }
+
+  if (baseRiskPoints >= 50) {
+    flaggedReasons.push(`Elevated baseline ML return risk (${baseRiskPoints}%)`);
+  }
+
+  const finalInvestigationScore = Math.min(100, Math.max(0, baseRiskPoints + netAdj + geoAdj + evAdj));
+
+  let investigationPriority: InvestigationScoreResult["investigationPriority"] = "LOW";
+  if (finalInvestigationScore >= 75 || netAdj >= 20) {
+    investigationPriority = "CRITICAL";
+  } else if (finalInvestigationScore >= 55) {
+    investigationPriority = "HIGH";
+  } else if (finalInvestigationScore >= 35) {
+    investigationPriority = "MEDIUM";
+  }
+
+  return {
+    baseTrustScore,
+    networkAdjustment: netAdj,
+    geoAdjustment: geoAdj,
+    evidenceAdjustment: evAdj,
+    finalInvestigationScore,
+    investigationPriority,
+    adjustments,
+    flaggedReasons,
+  };
 }
 
 export interface DecisionResult {
@@ -156,8 +291,10 @@ export function decide(input: {
   model: { riskScore: number };
   vision: VisionResult | null;
   orderValue: number;
+  network?: NetworkRiskResult | null;
+  investigation?: InvestigationScoreResult | null;
 }): DecisionResult {
-  const { fusion, policy, model, vision, orderValue } = input;
+  const { fusion, policy, model, vision, orderValue, network, investigation } = input;
   const rationale: string[] = [];
 
   if (!policy.eligible) {
@@ -174,6 +311,15 @@ export function decide(input: {
       return { outcome: "MANUAL_REVIEW", confidence: 0.6, rationale };
     }
     return { outcome: "DECLINE", confidence: 0.85, rationale };
+  }
+
+  // Network Syndicate Interception
+  if (network?.ringId && network.networkRisk >= 75) {
+    rationale.push(
+      `Flagged by Fraud Ring Intelligence: Linked to ${network.ringName || network.ringId} with ${network.networkRisk}/100 network risk.`,
+    );
+    rationale.push("Cross-account device/address sharing requires human fraud investigator triage.");
+    return { outcome: "MANUAL_REVIEW", confidence: 0.90, rationale };
   }
 
   if (fusion.conflicts.length > 0) {
@@ -198,7 +344,12 @@ export function decide(input: {
     return { outcome: "REFUND_ON_INSPECTION", confidence: 0.7, rationale };
   }
 
-  if (fusion.trustScore >= 75 && model.riskScore < 0.3 && fusion.agreement >= 0.6) {
+  if (
+    fusion.trustScore >= 75 &&
+    model.riskScore < 0.3 &&
+    fusion.agreement >= 0.6 &&
+    (!investigation || investigation.investigationPriority === "LOW")
+  ) {
     rationale.push(`Trust score ${fusion.trustScore}/100 with all sources agreeing.`);
     rationale.push(
       `Model risk ${(model.riskScore * 100).toFixed(1)}% is below the 30% low-risk threshold.`,
@@ -206,12 +357,12 @@ export function decide(input: {
     return { outcome: "AUTO_APPROVE", confidence: 0.85, rationale };
   }
 
-  if (fusion.trustScore < 35) {
+  if (fusion.trustScore < 35 || (investigation && investigation.finalInvestigationScore >= 80)) {
     rationale.push(
-      `Trust score ${fusion.trustScore}/100 with model risk ${(model.riskScore * 100).toFixed(1)}%.`,
+      `Trust score ${fusion.trustScore}/100 with investigation score ${investigation?.finalInvestigationScore ?? "elevated"}/100.`,
     );
     rationale.push(
-      "Evidence points away from a genuine claim, but a human confirms every decline.",
+      "Evidence points away from an authentic claim, but a human investigator confirms every decline.",
     );
     return { outcome: "MANUAL_REVIEW", confidence: 0.6, rationale };
   }
