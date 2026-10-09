@@ -56,6 +56,19 @@ function createSupabaseAdminClient() {
   });
 }
 
+export function isSupabaseConfigured(): boolean {
+  const url = process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "";
+  const key =
+    process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
+    process.env["SUPABASE_PUBLISHABLE_KEY"] ||
+    process.env["VITE_SUPABASE_PUBLISHABLE_KEY"] ||
+    "";
+  if (!url || !key) return false;
+  if (url.includes("offline-demo") || url.includes("placeholder")) return false;
+  if (key.includes("placeholder") || key.includes("offline_demo")) return false;
+  return true;
+}
+
 let _supabaseAdmin: ReturnType<typeof createSupabaseAdminClient> | undefined;
 
 // Server-side Supabase client with service role - bypasses RLS

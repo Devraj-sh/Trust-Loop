@@ -9,6 +9,7 @@ const NAV = [
   { to: "/fraud-rings", label: "Fraud rings" },
   { to: "/risk-map", label: "Risk map" },
   { to: "/returns/new", label: "New return" },
+  { to: "/upload", label: "Upload data" },
   { to: "/audit", label: "Audit trail" },
   { to: "/learning", label: "Model intelligence" },
 ] as const;

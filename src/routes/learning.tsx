@@ -170,11 +170,11 @@ function LearningAndGovernance() {
             </div>
             <div className="flex items-center justify-between pb-2 border-b border-border/60">
               <span className="font-mono text-muted-foreground">Feature Vector Size:</span>
-              <span className="font-mono text-foreground font-semibold">41 Engineered Features</span>
+              <span className="font-mono text-foreground font-semibold">38 Engineered Features</span>
             </div>
             <div className="flex items-center justify-between pb-2 border-b border-border/60">
               <span className="font-mono text-muted-foreground">Benchmark ROC-AUC:</span>
-              <span className="font-mono text-foreground font-semibold">0.842 (Test Split)</span>
+              <span className="font-mono text-foreground font-semibold">0.865 (Test Split)</span>
             </div>
             <div className="flex items-center justify-between pb-2 border-b border-border/60">
               <span className="font-mono text-muted-foreground">Inference Latency:</span>
@@ -182,7 +182,7 @@ function LearningAndGovernance() {
             </div>
 
             <div className="mt-4 rounded-xl bg-muted/40 p-3 text-[11px] text-muted-foreground">
-              Evaluated directly against historical Brazilian e-commerce logistics and customer behavior.
+              Evaluated directly against historical Indian Amazon e-commerce benchmark (2015–2025) and customer behavior.
             </div>
           </div>
         </Panel>

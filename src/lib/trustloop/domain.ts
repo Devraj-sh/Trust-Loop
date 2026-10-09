@@ -63,7 +63,7 @@ export interface Signal {
 }
 
 export interface EvidenceItem {
-  source: "ml" | "policy" | "vision" | "behaviour" | "network" | "geo";
+  source: "ml" | "policy" | "vision" | "behaviour" | "network" | "geo" | "cross_merchant";
   label: string;
   verdict: string;
   /** 0-1, where 1 means "fully supports approving the return as claimed". */
@@ -74,7 +74,7 @@ export interface EvidenceItem {
 }
 
 export interface LayeredAdjustment {
-  source: "network" | "geography" | "evidence";
+  source: "network" | "geography" | "evidence" | "cross_merchant";
   title: string;
   points: number;
   reason: string;
@@ -99,9 +99,9 @@ export interface Conflict {
 }
 
 export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: "USD",
+    currency: "INR",
     maximumFractionDigits: 0,
   }).format(value);
 }

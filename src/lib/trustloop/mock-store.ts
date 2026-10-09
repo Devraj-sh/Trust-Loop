@@ -1,16 +1,22 @@
 /**
  * TrustLoop 2.0 In-Memory Resilient Data Store
  * Provides seamless local/offline execution when Supabase is not configured.
- * Seeded with deterministically anchored orders from Olist historical dataset,
- * demo fraud rings, and audit trails.
+ * Dynamically evaluates orders against the 38-feature Indian e-commerce ML models
+ * (XGBoost, Logistic Regression, Decision Tree), policy rules, and multi-source fusion.
  */
 
 import ordersSample from "./data/orders_sample.json";
 import customersSample from "./data/customers_sample.json";
 import categoriesSample from "./data/categories.json";
+import { runModel, runAllModels, type ModelKey, type MultiModelComparison } from "@/lib/ml/engine";
+import { buildFeatureVector, type CategoryRow, type CustomerRow, type OrderRow } from "./features";
+import { evaluatePolicy, type PolicyResult } from "./policy";
+import { analyseBehaviour, type BehaviourResult } from "./behaviour";
+import { decide, fuseEvidence, calculateInvestigationScore, type FusionResult } from "./fusion";
 import { evaluateNetworkRisk } from "./network";
 import { calculateGeoAdjustment } from "./geo";
-import { calculateInvestigationScore } from "./fusion";
+import { evaluateCrossMerchantRisk, type CrossMerchantEvidenceResult } from "./cross-merchant";
+import type { ConditionCode, ReasonCode } from "./domain";
 
 export interface MockReturnRecord {
   id: string;
@@ -31,15 +37,17 @@ export interface MockReturnRecord {
   networkRisk: number;
   ringId: string | null;
   isRingConnected: boolean;
+  crossMerchant?: CrossMerchantEvidenceResult;
+  hasCrossMerchantMatch?: boolean;
   prediction?: any;
   policy?: any;
   behaviour?: any;
   fusion?: any;
-  decisions?: any[];
+  decisions?: any[] | undefined;
   vision?: any;
-  imageUrl?: string | null;
-  reviews?: any[];
-  events?: any[];
+  imageUrl?: string | null | undefined;
+  reviews?: any[] | undefined;
+  events?: any[] | undefined;
 }
 
 export interface MockAuditEvent {
@@ -58,299 +66,434 @@ export interface MockAuditEvent {
 const mockReturns: Map<string, MockReturnRecord> = new Map();
 const mockAuditEvents: MockAuditEvent[] = [];
 
-// Initialize seed data
-function initializeMockStore() {
-  if (mockReturns.size > 0) return;
+/**
+ * Synthesize a complete, genuine return evaluation for an order using the real ML models,
+ * policy engine, behaviour ledger, and fusion arbiter.
+ */
+export function synthesizeReturnForOrder(
+  order: any,
+  options?: {
+    model?: ModelKey | undefined;
+    reason?: ReasonCode | undefined;
+    condition?: ConditionCode | undefined;
+    description?: string | undefined;
+    imageUrl?: string | null | undefined;
+    returnId?: string | undefined;
+    reference?: string | undefined;
+    ringId?: string | null | undefined;
+    networkRiskOverride?: number | undefined;
+    visionMatchesClaim?: boolean | undefined;
+    visionDamageScore?: number | undefined;
+    visionObservedCondition?: string | undefined;
+    visionSummary?: string | undefined;
+  }
+): { record: MockReturnRecord; auditEvents: MockAuditEvent[] } {
+  const customer =
+    (customersSample as any[]).find(
+      (c) =>
+        c.id === order.customer_id ||
+        c.customer_id === order.customer_id ||
+        c.external_id === order.customer_ext_id,
+    ) ||
+    order.customers || {
+      id: order.customer_id || "CUST-DEFAULT",
+      external_id: order.customer_ext_id || "CUST-DEFAULT",
+      customer_name: order.customer_name || "Customer",
+      city: "Mumbai",
+      city_code: 3020,
+      state: "MH",
+      state_code: 7,
+      total_orders: 4,
+      total_spent: 50000,
+      avg_order_value: 12500,
+      total_returns: 0,
+      return_rate: 0,
+      avg_delivery_days: 4,
+      low_rating_count: 0,
+      days_since_last_order: 30,
+      customer_lifetime_days: 365,
+      is_one_time_buyer: 0,
+    };
 
-  const heroOrder = (ordersSample as any[]).find(
-    (o) => o.id === "5e1a9a20-5d9e-5019-97a6-19ddf02b72f1" || o.external_id === "e481f51cbdc54678b7cc49136f2d6af7",
-  ) || (ordersSample as any[])[0];
+  const category =
+    (categoriesSample as any[]).find((c) => c.code === order.category_code) ||
+    order.product_categories || {
+      code: order.category_code ?? 0,
+      name: order.category_name || "General Merchandise",
+      avg_rating: 4.2,
+      complaint_rate: 0.14,
+      dissatisfaction_rate: 0.16,
+      low_rating_pct: 12.0,
+    };
 
-  const normalOrder = (ordersSample as any[])[1];
-  const inspOrder = (ordersSample as any[])[2];
+  const rawReason = order.return_reason;
+  const reason: ReasonCode =
+    options?.reason ||
+    (rawReason &&
+    ["DAMAGED", "DEFECTIVE", "WRONG_ITEM", "NOT_AS_DESCRIBED", "SIZE_FIT", "LATE_DELIVERY", "CHANGED_MIND"].includes(
+      rawReason,
+    )
+      ? (rawReason as ReasonCode)
+      : Number(order.customer_rating ?? 4) <= 2
+        ? "DEFECTIVE"
+        : Number(order.delivery_days ?? 4) >= 8
+          ? "LATE_DELIVERY"
+          : "DAMAGED");
 
-  // 1. Hero return (connected to Fraud Ring TL-RING-001)
-  const heroId = "5e1a9a20-5d9e-5019-97a6-19ddf02b72f1";
-  const heroReturn: MockReturnRecord = {
-    id: heroId,
-    reference: "RET-HERO-001",
-    orderId: heroOrder.id,
-    orderRef: heroOrder.external_id,
-    orderValue: Number(heroOrder.total_price),
-    reason: "DAMAGED",
-    condition: "DAMAGED",
-    status: "IN_REVIEW",
-    createdAt: new Date(Date.now() - 3600 * 1000 * 2).toISOString(),
-    riskScore: 0.42,
-    riskLevel: "MEDIUM",
-    trustScore: 74,
-    currentDecision: "MANUAL_REVIEW",
+  const condition: ConditionCode =
+    options?.condition ||
+    (reason === "DAMAGED"
+      ? "DAMAGED"
+      : reason === "DEFECTIVE"
+        ? "USED"
+        : reason === "CHANGED_MIND"
+          ? "UNOPENED"
+          : "LIKE_NEW");
+
+  const modelKey: ModelKey = options?.model || "xgboost";
+  const returnId = options?.returnId || order.id || `ret-${Date.now()}`;
+  const reference =
+    options?.reference ||
+    (order.external_id
+      ? `RET-${order.external_id.replace("ORD_", "").replace("IN-", "").replace("CURRENT-", "CUR-")}`
+      : `TL-${Date.now().toString(36).toUpperCase()}`);
+
+  // 1. Build 38-feature vector and evaluate models
+  const features = buildFeatureVector(order as OrderRow, customer as CustomerRow, category as CategoryRow);
+  const multiModels: MultiModelComparison = runAllModels(features);
+  const selectedModel = multiModels[modelKey] || multiModels.xgboost;
+
+  // 2. Policy & Behaviour
+  const policy: PolicyResult = evaluatePolicy(order as OrderRow, reason, condition);
+  const behaviour: BehaviourResult = analyseBehaviour(customer as CustomerRow, order as OrderRow);
+
+  // 3. Network & Geo Intelligence
+  const network = evaluateNetworkRisk(order.id || order.external_id);
+  if (options?.ringId) {
+    network.ringId = options.ringId;
+    network.networkRisk = options.networkRiskOverride ?? 88;
+  }
+  const geo = calculateGeoAdjustment(customer.state);
+
+  // 3b. Cross-Merchant Consortium Intelligence (UrbanBasket ⇄ NexaCart)
+  const crossMerchant = evaluateCrossMerchantRisk(
+    order.id || order.external_id,
+    customer.id || customer.external_id,
+    "NexaCart"
+  );
+
+  // 4. Vision inspection synthesis
+  const isDamaged = condition === "DAMAGED" || reason === "DAMAGED";
+  const matchesClaim = options?.visionMatchesClaim !== undefined ? options.visionMatchesClaim : true;
+  const damageScore =
+    options?.visionDamageScore !== undefined
+      ? options.visionDamageScore
+      : isDamaged && matchesClaim
+        ? 0.88
+        : !matchesClaim
+          ? 0.05
+          : condition === "USED"
+            ? 0.35
+            : 0.02;
+
+  const observedCondition =
+    options?.visionObservedCondition ||
+    (!matchesClaim ? "LIKE_NEW" : isDamaged ? "DAMAGED" : condition === "UNOPENED" ? "UNOPENED" : "LIKE_NEW");
+
+  const vision = {
+    provider: "TrustLoop Vision Engine",
+    model: "google/gemini-3.8-flash",
+    isFallback: false,
+    observedCondition,
+    damageScore,
+    matchesClaim,
+    findings:
+      options?.visionSummary
+        ? [{ label: "Inspection Findings", detail: options.visionSummary }]
+        : !matchesClaim
+          ? [
+              { label: "Hardware Casing", detail: "Outer chassis and paneling appear structurally intact without fracture." },
+              { label: "Claim Discrepancy", detail: "Photo exhibits unopened or undamaged retail package contradicting transit destruction claim." },
+            ]
+          : isDamaged
+            ? [
+                { label: "Surface Impact", detail: "Physical fracture and casing deformation visible on hardware." },
+                { label: "Component Integrity", detail: "Structural stress marks consistent with transit impact." },
+              ]
+            : [
+                { label: "Visual Surface Inspection", detail: "Clean hardware condition matching reported claim details." },
+                { label: "Packaging Integrity", detail: "Enclosure evaluated without tamper or crush trauma." },
+              ],
+    summary:
+      options?.visionSummary ||
+      (!matchesClaim
+        ? "Visual inspection detected intact, undamaged hardware, contradicting the customer's reported damage claim."
+        : isDamaged
+          ? `Visual evidence corroborates physical damage and casing stress consistent with reported ${reason.toLowerCase()} claim.`
+          : `Visual inspection verifies item is intact and conforms to ${condition.toLowerCase()} state.`),
+  };
+
+  // 5. Evidence Fusion & Investigation
+  const fusion: FusionResult = fuseEvidence({
+    model: selectedModel,
+    policy,
+    behaviour,
+    vision,
+    reason,
+    network,
+    geo,
+    crossMerchant,
+  });
+
+  const investigation = calculateInvestigationScore({
+    baseTrustScore: fusion.trustScore,
+    modelRiskScore: selectedModel.riskScore,
+    network,
+    geo,
+    crossMerchant,
+    conflictsCount: fusion.conflicts.length,
+  });
+
+  const decision = decide({
+    fusion,
+    policy,
+    model: selectedModel,
+    vision,
+    orderValue: Number(order.total_price),
+    network,
+    geo,
+    crossMerchant,
+    investigation,
+    reason,
+  });
+
+  // 6. Audit Trail Events
+  const baseTime = Date.now() - 3600 * 1000 * 3;
+  const auditEvents: MockAuditEvent[] = [
+    {
+      id: `evt-${returnId}-1`,
+      stage: "intake",
+      actor: "SYSTEM",
+      actorName: "TrustLoop Intake",
+      summary: `Return request ${reference} accepted for order ${order.external_id}. Claim: ${reason} (${condition.toLowerCase()}).`,
+      payload: { reason, condition, orderRef: order.external_id },
+      createdAt: new Date(baseTime).toISOString(),
+      returnId,
+      reference,
+    },
+    {
+      id: `evt-${returnId}-2`,
+      stage: "model",
+      actor: "SYSTEM",
+      actorName: "ML Engine",
+      summary: `${selectedModel.modelLabel} evaluated 38 features and scored ${(selectedModel.riskScore * 100).toFixed(1)}% return risk (${selectedModel.riskLevel}). Top driver: ${selectedModel.contributions[0]?.feature || "return_rate"}.`,
+      payload: {
+        model: selectedModel.model,
+        riskScore: selectedModel.riskScore,
+        riskLevel: selectedModel.riskLevel,
+        consensus: multiModels.consensus.summary,
+      },
+      createdAt: new Date(baseTime + 100).toISOString(),
+      returnId,
+      reference,
+    },
+    {
+      id: `evt-${returnId}-3`,
+      stage: "policy",
+      actor: "SYSTEM",
+      actorName: "Policy Engine",
+      summary: policy.eligible
+        ? "Merchant policy rules passed all validation checks."
+        : `Policy violation: ${policy.rules.find((r) => !r.passed)?.detail || "Ineligible under return terms."}`,
+      payload: { eligible: policy.eligible, windowRemaining: policy.windowDaysRemaining },
+      createdAt: new Date(baseTime + 200).toISOString(),
+      returnId,
+      reference,
+    },
+    {
+      id: `evt-${returnId}-4`,
+      stage: "vision",
+      actor: "SYSTEM",
+      actorName: "Vision Guard",
+      summary: vision.summary,
+      payload: { observedCondition: vision.observedCondition, damageScore: vision.damageScore, matchesClaim: vision.matchesClaim },
+      createdAt: new Date(baseTime + 300).toISOString(),
+      returnId,
+      reference,
+    },
+    {
+      id: `evt-${returnId}-5`,
+      stage: "network_analysis",
+      actor: "SYSTEM",
+      actorName: "Network Intelligence",
+      summary: network.ringId
+        ? `Linked to Fraud Ring ${network.ringId}: ${network.networkRisk}% risk (+${network.adjustment} points).`
+        : `Network relationship check: No shared device/address entities (${network.networkRisk}% baseline risk).`,
+      payload: { networkRisk: network.networkRisk, ringId: network.ringId },
+      createdAt: new Date(baseTime + 400).toISOString(),
+      returnId,
+      reference,
+    },
+    {
+      id: `evt-${returnId}-6`,
+      stage: "geo_analysis",
+      actor: "SYSTEM",
+      actorName: "Geo Hotspot Engine",
+      summary: `Regional hotspot analysis for ${geo.areaName}: ${geo.hotspotScore}/100 score (+${geo.adjustment} priority adjustment).`,
+      payload: { hotspotScore: geo.hotspotScore, area: geo.areaName },
+      createdAt: new Date(baseTime + 500).toISOString(),
+      returnId,
+      reference,
+    },
+    {
+      id: `evt-${returnId}-7`,
+      stage: "fusion",
+      actor: "SYSTEM",
+      actorName: "Multi-Source Fusion",
+      summary: `Trust score ${fusion.trustScore}/100 with ${(fusion.agreement * 100).toFixed(0)}% source agreement.`,
+      payload: { trustScore: fusion.trustScore, agreement: fusion.agreement },
+      createdAt: new Date(baseTime + 600).toISOString(),
+      returnId,
+      reference,
+    },
+    {
+      id: `evt-${returnId}-8`,
+      stage: "decision",
+      actor: "SYSTEM",
+      actorName: "Decision Arbiter",
+      summary: `System decision: ${decision.outcome} (confidence ${(decision.confidence * 100).toFixed(0)}%).`,
+      payload: { outcome: decision.outcome, confidence: decision.confidence, rationale: decision.rationale },
+      createdAt: new Date(baseTime + 700).toISOString(),
+      returnId,
+      reference,
+    },
+  ];
+
+  if (crossMerchant.hasCrossMerchantMatch) {
+    auditEvents.push({
+      id: `evt-${returnId}-cm`,
+      stage: "cross_merchant_intelligence",
+      actor: "SYSTEM",
+      actorName: "Consortium Engine",
+      summary: crossMerchant.headline,
+      payload: {
+        currentMerchant: crossMerchant.currentMerchant.name,
+        matchedMerchant: crossMerchant.matchedMerchant?.name,
+        urbanBasketReturns: crossMerchant.matchedMerchant?.profile.totalReturns,
+        urbanBasketReturnRate: crossMerchant.matchedMerchant?.profile.returnRate,
+        flags: crossMerchant.matchedMerchant?.profile.flags,
+      },
+      createdAt: new Date(baseTime + 550).toISOString(),
+      returnId,
+      reference,
+    });
+  }
+
+  const record: MockReturnRecord = {
+    id: returnId,
+    reference,
+    orderId: order.id,
+    orderRef: order.external_id,
+    orderValue: Number(order.total_price),
+    reason,
+    condition,
+    status: decision.outcome === "MANUAL_REVIEW" ? "IN_REVIEW" : "RESOLVED",
+    createdAt: new Date(baseTime).toISOString(),
+    riskScore: selectedModel.riskScore,
+    riskLevel: selectedModel.riskLevel,
+    trustScore: fusion.trustScore,
+    currentDecision: decision.outcome,
     decisionSource: "SYSTEM",
     decidedByHuman: false,
-    networkRisk: 91,
-    ringId: "TL-RING-001",
-    isRingConnected: true,
+    networkRisk: network.networkRisk,
+    ringId: network.ringId,
+    isRingConnected: Boolean(network.ringId),
+    crossMerchant,
+    hasCrossMerchantMatch: crossMerchant.hasCrossMerchantMatch,
     prediction: {
-      risk_score: 0.42,
-      risk_level: "MEDIUM",
-      model_label: "XGBoost Classifier",
-      confidence: 0.88,
-      contributions: [
-        { feature: "num_items", value: 1, contribution: 0.05 },
-        { feature: "freight_ratio", value: 0.29, contribution: 0.12 },
-        { feature: "actual_delivery_days", value: 8.4, contribution: -0.08 },
-        { feature: "review_score", value: 4, contribution: -0.15 },
-      ],
+      risk_score: selectedModel.riskScore,
+      risk_level: selectedModel.riskLevel,
+      model_label: selectedModel.modelLabel,
+      confidence: selectedModel.confidence,
+      contributions: selectedModel.contributions,
+      all_models: multiModels,
+      feature_vector: features,
     },
     policy: {
-      eligible: true,
-      window_days_remaining: 18,
-      rules: [
-        { name: "30-Day Return Window", passed: true, details: "Within 30-day window (18 days remaining)" },
-        { name: "Condition Eligibility", passed: true, details: "DAMAGED acceptable for transit claim" },
-      ],
+      eligible: policy.eligible,
+      window_days_remaining: policy.windowDaysRemaining,
+      rules: policy.rules,
     },
     behaviour: {
-      behaviourScore: 0.31,
-      signals: [
-        { code: "FREQ_ORDER", severity: "LOW", message: "2 past orders recorded" },
-        { code: "BURST_ATTEMPT", severity: "MEDIUM", message: "Account created within 48h of return window closure" },
-      ],
+      behaviourScore: behaviour.behaviourScore,
+      behaviour_score: behaviour.behaviourScore,
+      signals: behaviour.signals,
     },
     fusion: {
-      trustScore: 74,
-      agreement: 0.85,
-      evidence: [
-        { source: "ml_model", riskScore: 0.42, weight: 0.35, confidence: 0.88 },
-        { source: "policy", riskScore: 0.1, weight: 0.2, confidence: 0.99 },
-        { source: "behaviour", riskScore: 0.31, weight: 0.25, confidence: 0.75 },
-        { source: "vision", riskScore: 0.78, weight: 0.2, confidence: 0.82 },
-      ],
-      conflicts: [
-        "Customer claim ('Transit Impact Crushed') conflicts with visual inspection (unopened retail packaging, zero carton perforation).",
-      ],
+      trustScore: fusion.trustScore,
+      trust_score: fusion.trustScore,
+      agreement: fusion.agreement,
+      evidence: fusion.evidence,
+      conflicts: fusion.conflicts,
     },
     decisions: [
       {
-        outcome: "MANUAL_REVIEW",
+        outcome: decision.outcome,
         source: "SYSTEM",
-        confidence: 0.88,
+        confidence: decision.confidence,
         is_current: true,
-        created_at: new Date(Date.now() - 3600 * 1000 * 2).toISOString(),
-        rationale: [
-          "Elevated network risk (+25) from connection to Fraud Ring TL-RING-001.",
-          "Visual evidence conflict observed: claim of structural transit damage not supported by packaging photo.",
-          "Routed to Human Fraud Specialist queue for multi-account investigation.",
-        ],
+        created_at: new Date(baseTime + 700).toISOString(),
+        rationale: decision.rationale,
       },
     ],
-    vision: {
-      matches_claim: false,
-      observed_condition: "Minor cosmetic corner scuff, packaging intact",
-      damage_score: 0.18,
-      summary: "Customer claimed severe impact destruction. Photo shows undamaged outer retail carton.",
-      provider: "GEMINI_2_FLASH",
-      is_fallback: false,
-    },
-    imageUrl: null,
+    vision,
+    imageUrl: options?.imageUrl || order.evidence_image_url || null,
     reviews: [],
-    events: [
-      {
-        id: "evt-01",
-        stage: "intake",
-        actor: "SYSTEM",
-        actorName: "TrustLoop Ingestion",
-        summary: "Return request RET-HERO-001 submitted for order e481f51cbdc54678b7cc49136f2d6af7.",
-        payload: { reason: "DAMAGED", orderRef: heroOrder.external_id },
-        createdAt: new Date(Date.now() - 3600 * 1000 * 2).toISOString(),
-        returnId: heroId,
-        reference: "RET-HERO-001",
-      },
-      {
-        id: "evt-02",
-        stage: "model",
-        actor: "SYSTEM",
-        actorName: "ML Engine",
-        summary: "XGBoost Classifier scored 42.0% return risk (MEDIUM).",
-        payload: { model: "xgboost", riskScore: 0.42 },
-        createdAt: new Date(Date.now() - 3600 * 1000 * 2 + 100).toISOString(),
-        returnId: heroId,
-        reference: "RET-HERO-001",
-      },
-      {
-        id: "evt-03",
-        stage: "network_analysis",
-        actor: "SYSTEM",
-        actorName: "Fraud Ring Intelligence",
-        summary: "Linked to fraud ring TL-RING-001: 91% network risk (+25 bounded adjustment points). 8 accounts sharing 3 devices.",
-        payload: { networkRisk: 91, ringId: "TL-RING-001", connectedAccounts: 8 },
-        createdAt: new Date(Date.now() - 3600 * 1000 * 2 + 200).toISOString(),
-        returnId: heroId,
-        reference: "RET-HERO-001",
-      },
-      {
-        id: "evt-04",
-        stage: "geo_analysis",
-        actor: "SYSTEM",
-        actorName: "Geo Hotspot Engine",
-        summary: "Origin area São Paulo (SP): Hotspot Score 82/100 (HIGH RISK). Added +12 risk adjustment points.",
-        payload: { hotspotScore: 82, area: "São Paulo (SP)", adjustment: 12 },
-        createdAt: new Date(Date.now() - 3600 * 1000 * 2 + 300).toISOString(),
-        returnId: heroId,
-        reference: "RET-HERO-001",
-      },
-      {
-        id: "evt-05",
-        stage: "risk_adjustment",
-        actor: "SYSTEM",
-        actorName: "Multi-Pillar Evidence Fusion",
-        summary: "Layered Score: 89/100 (HIGH priority). Base ML: 42, Geo: +12, Network: +25, Conflict: +10.",
-        payload: { finalScore: 89, priority: "HIGH" },
-        createdAt: new Date(Date.now() - 3600 * 1000 * 2 + 400).toISOString(),
-        returnId: heroId,
-        reference: "RET-HERO-001",
-      },
-      {
-        id: "evt-06",
-        stage: "decision",
-        actor: "SYSTEM",
-        actorName: "Decision Arbiter",
-        summary: "System decision: MANUAL_REVIEW (Confidence 88%). Flagged for investigation.",
-        payload: { outcome: "MANUAL_REVIEW", confidence: 0.88 },
-        createdAt: new Date(Date.now() - 3600 * 1000 * 2 + 500).toISOString(),
-        returnId: heroId,
-        reference: "RET-HERO-001",
-      },
-    ],
+    events: auditEvents,
   };
 
-  mockReturns.set(heroId, heroReturn);
-  mockAuditEvents.push(...heroReturn.events!);
+  return { record, auditEvents };
+}
 
-  // 2. Normal Low-Risk Return
-  if (normalOrder) {
-    const normalId = "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d";
-    const normalReturn: MockReturnRecord = {
-      id: normalId,
-      reference: "RET-NORM-042",
-      orderId: normalOrder.id,
-      orderRef: normalOrder.external_id,
-      orderValue: Number(normalOrder.total_price),
-      reason: "SIZE_FIT",
-      condition: "UNOPENED",
-      status: "RESOLVED",
-      createdAt: new Date(Date.now() - 3600 * 1000 * 6).toISOString(),
-      riskScore: 0.14,
-      riskLevel: "LOW",
-      trustScore: 92,
-      currentDecision: "AUTO_APPROVE",
-      decisionSource: "SYSTEM",
-      decidedByHuman: false,
-      networkRisk: 12,
-      ringId: null,
-      isRingConnected: false,
-      prediction: {
-        risk_score: 0.14,
-        risk_level: "LOW",
-        model_label: "XGBoost Classifier",
-        confidence: 0.94,
-        contributions: [],
-      },
-      policy: { eligible: true, window_days_remaining: 24, rules: [] },
-      behaviour: { behaviourScore: 0.05, signals: [] },
-      fusion: { trustScore: 92, agreement: 0.95, evidence: [], conflicts: [] },
-      decisions: [
-        {
-          outcome: "AUTO_APPROVE",
-          source: "SYSTEM",
-          confidence: 0.95,
-          is_current: true,
-          created_at: new Date(Date.now() - 3600 * 1000 * 6).toISOString(),
-          rationale: ["Pristine buyer history", "No network connections", "Eligible policy window"],
-        },
-      ],
-      vision: null,
-      imageUrl: null,
-      reviews: [],
-      events: [
-        {
-          id: "evt-norm-01",
-          stage: "decision",
-          actor: "SYSTEM",
-          actorName: "Decision Arbiter",
-          summary: "System decision: AUTO_APPROVE. Fast-tracked for refund processing.",
-          payload: { outcome: "AUTO_APPROVE" },
-          createdAt: new Date(Date.now() - 3600 * 1000 * 6).toISOString(),
-          returnId: normalId,
-          reference: "RET-NORM-042",
-        },
-      ],
-    };
-    mockReturns.set(normalId, normalReturn);
-    mockAuditEvents.push(...normalReturn.events!);
+// Initialize seed data
+export function initializeMockStore() {
+  if (mockReturns.size > 0) return;
+
+  const orders = ordersSample as any[];
+
+  // 1. Hero return connected to Fraud Ring TL-RING-001
+  const heroOrder =
+    orders.find((o) => o.id === "2b3acde1-6291-500a-af7d-b9b9d3829a8c" || o.external_id === "ORD_14841") || orders[0];
+  if (heroOrder) {
+    const heroId = "2b3acde1-6291-500a-af7d-b9b9d3829a8c";
+    const { record: heroReturn, auditEvents: heroEvents } = synthesizeReturnForOrder(heroOrder, {
+      returnId: heroId,
+      reference: "RET-HERO-001",
+      ringId: "TL-RING-001",
+      networkRiskOverride: 91,
+      visionMatchesClaim: false,
+      visionObservedCondition: "LIKE_NEW",
+      visionDamageScore: 0.08,
+      visionSummary: "Customer claimed severe impact destruction. Photo shows undamaged outer retail carton.",
+    });
+    saveMockReturn(heroReturn, heroEvents);
   }
 
-  // 3. Medium-High Inspection Return
-  if (inspOrder) {
-    const inspId = "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e";
-    const inspReturn: MockReturnRecord = {
-      id: inspId,
-      reference: "RET-INSP-089",
-      orderId: inspOrder.id,
-      orderRef: inspOrder.external_id,
-      orderValue: Number(inspOrder.total_price),
-      reason: "DEFECTIVE",
-      condition: "USED",
-      status: "IN_REVIEW",
-      createdAt: new Date(Date.now() - 3600 * 1000 * 12).toISOString(),
-      riskScore: 0.65,
-      riskLevel: "HIGH",
-      trustScore: 48,
-      currentDecision: "REFUND_ON_INSPECTION",
-      decisionSource: "SYSTEM",
-      decidedByHuman: false,
-      networkRisk: 64,
-      ringId: "TL-RING-002",
-      isRingConnected: true,
-      prediction: {
-        risk_score: 0.65,
-        risk_level: "HIGH",
-        model_label: "XGBoost Classifier",
-        confidence: 0.81,
-        contributions: [],
-      },
-      policy: { eligible: true, window_days_remaining: 5, rules: [] },
-      behaviour: { behaviourScore: 0.45, signals: [] },
-      fusion: { trustScore: 48, agreement: 0.72, evidence: [], conflicts: ["Used condition on technical product"] },
-      decisions: [
-        {
-          outcome: "REFUND_ON_INSPECTION",
-          source: "SYSTEM",
-          confidence: 0.84,
-          is_current: true,
-          created_at: new Date(Date.now() - 3600 * 1000 * 12).toISOString(),
-          rationale: ["Defect claim on used item requires warehouse bench testing prior to refund."],
-        },
-      ],
-      vision: null,
-      imageUrl: null,
-      reviews: [],
-      events: [
-        {
-          id: "evt-insp-01",
-          stage: "decision",
-          actor: "SYSTEM",
-          actorName: "Decision Arbiter",
-          summary: "System decision: REFUND_ON_INSPECTION. Warehouse testing mandated.",
-          payload: { outcome: "REFUND_ON_INSPECTION" },
-          createdAt: new Date(Date.now() - 3600 * 1000 * 12).toISOString(),
-          returnId: inspId,
-          reference: "RET-INSP-089",
-        },
-      ],
-    };
-    mockReturns.set(inspId, inspReturn);
-    mockAuditEvents.push(...inspReturn.events!);
+  // 2. Seed all the current active demo returns (IN-CURRENT-001 to IN-CURRENT-008)
+  const currentOrders = orders.filter((o) => o.is_current_return || o.external_id?.startsWith("IN-CURRENT"));
+  for (const o of currentOrders) {
+    const { record, auditEvents } = synthesizeReturnForOrder(o);
+    saveMockReturn(record, auditEvents);
+  }
+
+  // 3. Seed additional varied historical orders
+  const sampleIndices = [1, 2, 3, 5, 8, 12, 18, 25];
+  for (const idx of sampleIndices) {
+    const o = orders[idx];
+    if (o && !mockReturns.has(o.id) && !mockReturns.has(o.external_id)) {
+      const { record, auditEvents } = synthesizeReturnForOrder(o);
+      saveMockReturn(record, auditEvents);
+    }
   }
 }
 
@@ -385,123 +528,147 @@ export function getMockOverview() {
     evidenceConflicts: 31,
     policyViolations: 12,
     humanEscalations: decisionCounts["MANUAL_REVIEW"] || 27,
-    // TrustLoop 2.0 Command Center Executive KPIs
-    returnsAnalyzed: (ordersSample as any[]).length, // 4,981
+    returnsAnalyzed: (ordersSample as any[]).length,
     highRiskReturns: 27,
     activeFraudRingsCount: 8,
     riskHotspotsCount: 5,
-    refundExposureTotal: 148500, // ₹12.4L equivalent
+    refundExposureTotal: 148500,
   };
 }
 
 export function listMockReturns(onlyReviewable = false, limit = 50) {
   initializeMockStore();
   let list = Array.from(mockReturns.values());
-  if (onlyReviewable) {
-    list = list.filter((r) => r.currentDecision === "MANUAL_REVIEW" && !r.decidedByHuman);
+  // Deduplicate by id
+  const seen = new Set<string>();
+  const unique: MockReturnRecord[] = [];
+  for (const r of list) {
+    if (!seen.has(r.id)) {
+      seen.add(r.id);
+      unique.push(r);
+    }
   }
-  return list.slice(0, limit);
+
+  if (onlyReviewable) {
+    return unique.filter((r) => r.currentDecision === "MANUAL_REVIEW" && !r.decidedByHuman).slice(0, limit);
+  }
+  return unique.slice(0, limit);
 }
 
 export function getMockReturn(id: string) {
   initializeMockStore();
-  const found = mockReturns.get(id);
+  let found = mockReturns.get(id);
+
   if (!found) {
-    // If querying an order directly, check if we can synthesize a return view for it
+    for (const r of mockReturns.values()) {
+      if (r.id === id || r.reference === id || r.orderId === id || r.orderRef === id) {
+        found = r;
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    // If querying an order directly, synthesize a complete, authentic return view for it
     const order = (ordersSample as any[]).find((o) => o.id === id || o.external_id === id);
     if (!order) return null;
+    const { record, auditEvents } = synthesizeReturnForOrder(order, { returnId: id });
+    saveMockReturn(record, auditEvents);
+    found = record;
+  }
 
-    const customer = (customersSample as any[]).find((c) => c.id === order.customer_id) || order.customers;
-    const category = (categoriesSample as any[]).find((c) => c.code === order.category_code);
-    const net = evaluateNetworkRisk(order.id || order.external_id);
-    const geo = calculateGeoAdjustment(customer?.state);
-    const inv = calculateInvestigationScore({
-      baseTrustScore: 65,
-      modelRiskScore: 0.35,
-      network: net,
-      geo,
-      conflictsCount: 0,
-    });
-
-    return {
-      request: {
-        id,
-        reference: `RET-${order.external_id.slice(0, 8).toUpperCase()}`,
-        order_id: order.id,
-        reason_code: "DAMAGED",
-        claimed_condition: "DAMAGED",
-        status: "IN_REVIEW",
-        created_at: new Date().toISOString(),
-        orders: { ...order, customers: customer, product_categories: category },
-      },
-      prediction: {
-        risk_score: 0.35,
-        risk_level: "MEDIUM",
-        model_label: "XGBoost Classifier",
-        confidence: 0.85,
-        contributions: [],
-      },
-      policy: { eligible: true, window_days_remaining: 14, rules: [] },
-      behaviour: { behaviourScore: 0.25, signals: [] },
-      fusion: { trustScore: 65, agreement: 0.8, evidence: [], conflicts: [] },
-      decisions: [{ outcome: "MANUAL_REVIEW", source: "SYSTEM", confidence: 0.85, is_current: true }],
-      vision: null,
-      imageUrl: null,
-      reviews: [],
-      events: [],
-      network: net,
-      geo,
-      investigation: inv,
-    };
+  // Ensure prediction contributions and all_models are populated
+  if (found && (!found.prediction?.contributions?.length || !found.prediction?.all_models)) {
+    const order = (ordersSample as any[]).find((o) => o.id === found!.orderId || o.external_id === found!.orderRef);
+    if (order) {
+      const refreshed = synthesizeReturnForOrder(order, {
+        model:
+          found.prediction?.model_label === "Logistic Regression"
+            ? "logistic_regression"
+            : found.prediction?.model_label === "Decision Tree"
+              ? "decision_tree"
+              : "xgboost",
+        reason: found.reason as ReasonCode,
+        condition: found.condition as ConditionCode,
+        returnId: found.id,
+        reference: found.reference,
+        imageUrl: found.imageUrl,
+      });
+      found.prediction = refreshed.record.prediction;
+      found.policy = refreshed.record.policy;
+      found.behaviour = refreshed.record.behaviour;
+      found.fusion = refreshed.record.fusion;
+      if (!found.decisions?.length) found.decisions = refreshed.record.decisions;
+      if (!found.events?.length) found.events = refreshed.record.events;
+    }
   }
 
   // Find order context
-  const foundOrder = (ordersSample as any[]).find((o) => o.id === found.orderId || o.external_id === found.orderRef);
+  const foundOrder = (ordersSample as any[]).find((o) => o.id === found!.orderId || o.external_id === found!.orderRef);
   const foundCustomer = foundOrder
-    ? (customersSample as any[]).find((c) => c.id === foundOrder.customer_id) || foundOrder.customers
+    ? (customersSample as any[]).find(
+        (c) =>
+          c.id === foundOrder.customer_id ||
+          c.customer_id === foundOrder.customer_id ||
+          c.external_id === foundOrder.customer_ext_id,
+      ) || foundOrder.customers
     : null;
   const foundCategory = foundOrder
     ? (categoriesSample as any[]).find((c) => c.code === foundOrder.category_code)
     : null;
 
-  const net = evaluateNetworkRisk(found.orderId || found.orderRef);
+  const net = evaluateNetworkRisk(found!.orderId || found!.orderRef);
+  if (found!.ringId) {
+    net.ringId = found!.ringId;
+    net.networkRisk = found!.networkRisk;
+  }
   const geo = calculateGeoAdjustment(foundCustomer?.state);
+  const crossMerchant =
+    (found as any)!.crossMerchant ||
+    evaluateCrossMerchantRisk(found!.orderId || found!.orderRef, foundCustomer?.external_id);
+
   const inv = calculateInvestigationScore({
-    baseTrustScore: found.trustScore,
-    modelRiskScore: found.riskScore,
+    baseTrustScore: found!.trustScore,
+    modelRiskScore: found!.riskScore,
     network: net,
     geo,
-    conflictsCount: found.fusion?.conflicts?.length || 0,
+    crossMerchant,
+    conflictsCount: found!.fusion?.conflicts?.length || 0,
   });
 
   return {
     request: {
-      id: found.id,
-      reference: found.reference,
-      order_id: found.orderId,
-      reason_code: found.reason,
-      claimed_condition: found.condition,
-      status: found.status,
-      created_at: found.createdAt,
+      id: found!.id,
+      reference: found!.reference,
+      order_id: found!.orderId,
+      reason_code: found!.reason,
+      claimed_condition: found!.condition,
+      status: found!.status,
+      created_at: found!.createdAt,
       orders: foundOrder ? { ...foundOrder, customers: foundCustomer, product_categories: foundCategory } : null,
     },
-    prediction: found.prediction,
-    policy: found.policy,
-    behaviour: found.behaviour,
-    fusion: found.fusion,
-    decisions: found.decisions || [],
-    vision: found.vision,
-    imageUrl: found.imageUrl,
-    reviews: found.reviews || [],
-    events: found.events || [],
+    prediction: found!.prediction,
+    policy: found!.policy,
+    behaviour: found!.behaviour,
+    fusion: found!.fusion,
+    decisions: found!.decisions || [],
+    vision: found!.vision,
+    imageUrl: found!.imageUrl,
+    reviews: found!.reviews || [],
+    events: found!.events || [],
     network: net,
     geo,
+    cross_merchant: crossMerchant,
+    has_cross_merchant_match: crossMerchant.hasCrossMerchantMatch,
     investigation: inv,
   };
 }
 
 export function saveMockReturn(record: MockReturnRecord, auditTrail: MockAuditEvent[]) {
   mockReturns.set(record.id, record);
+  mockReturns.set(record.reference, record);
+  if (record.orderId) mockReturns.set(record.orderId, record);
+  if (record.orderRef) mockReturns.set(record.orderRef, record);
   mockAuditEvents.unshift(...auditTrail);
 }
 

@@ -64,6 +64,7 @@ const PIPELINE_STEPS = [
   "Executing deterministic policy engine...",
   "Computing customer behavioral risk signals...",
   "Inspecting product photo evidence...",
+  "Cross-referencing Merchant Consortium (UrbanBasket ⇄ NexaCart)...",
   "Fusing evidence & calculating source agreement...",
   "Generating final explainable decision...",
 ];
@@ -117,6 +118,87 @@ function NewReturn() {
       setImage(null);
     }
     toast.info(`Loaded ${scenario.name}`);
+  };
+
+  // Intelligent order selection helper: auto-fills Customer Claim and Step 3 Photo Evidence
+  const selectOrder = (o: NonNullable<typeof orders.data>[number]) => {
+    setSelectedScenarioId(null);
+    setOrderId(o.id);
+
+    const rawReason = (o as any).return_reason;
+    const rating = Number((o as any).customer_rating ?? (o as any).review_score ?? 4);
+    const delivDays = Number((o as any).delivery_days ?? (o as any).actual_delivery_days ?? 5);
+    const catCode = Number((o as any).category_code ?? 0);
+    const prodName = (o as any).product_name || `Product from Order ${o.external_id}`;
+
+    let autoReason: ReasonCode = "CHANGED_MIND";
+    let autoCondition: ConditionCode = "UNOPENED";
+    let autoDesc = "";
+    let autoPreset: "damaged" | "no_damage" = "no_damage";
+    let autoPhotoName = "Verified Intake Proof Photo";
+
+    if (rawReason && ["DAMAGED", "DEFECTIVE", "WRONG_ITEM", "NOT_AS_DESCRIBED", "SIZE_FIT", "LATE_DELIVERY", "CHANGED_MIND"].includes(rawReason)) {
+      autoReason = rawReason as ReasonCode;
+    } else if (rating <= 2) {
+      autoReason = "DEFECTIVE";
+    } else if (delivDays >= 8) {
+      autoReason = "LATE_DELIVERY";
+    } else if (catCode === 7 || catCode === 8) {
+      autoReason = "SIZE_FIT";
+    } else if (rating === 3) {
+      autoReason = "NOT_AS_DESCRIBED";
+    } else {
+      autoReason = "CHANGED_MIND";
+    }
+
+    if (autoReason === "DAMAGED") {
+      autoCondition = "DAMAGED";
+      autoDesc = `${prodName} arrived with impact fractures and damaged casing inside the shipping parcel.`;
+      autoPreset = "damaged";
+      autoPhotoName = `${prodName} - Transit Damage Evidence Photo`;
+    } else if (autoReason === "DEFECTIVE") {
+      autoCondition = "LIKE_NEW";
+      autoDesc = `${prodName} is cosmetically intact but fails to operate or power on out of the box.`;
+      autoPreset = "no_damage";
+      autoPhotoName = `${prodName} - Functional Defect Inspection Photo`;
+    } else if (autoReason === "SIZE_FIT") {
+      autoCondition = "LIKE_NEW";
+      autoDesc = `Dimensions and form factor for ${prodName} do not match the expected specifications.`;
+      autoPreset = "no_damage";
+      autoPhotoName = `${prodName} - Sizing Verification Photo`;
+    } else if (autoReason === "WRONG_ITEM") {
+      autoCondition = "UNOPENED";
+      autoDesc = `Received a different variant/model than what was invoiced for ${prodName}. Packaging remains factory sealed.`;
+      autoPreset = "no_damage";
+      autoPhotoName = `${prodName} - Invoiced Variant Label Photo`;
+    } else if (autoReason === "LATE_DELIVERY") {
+      autoCondition = "UNOPENED";
+      autoDesc = `Shipment took ${delivDays} days to arrive and missed the required event date; package remains completely unopened.`;
+      autoPreset = "no_damage";
+      autoPhotoName = `${prodName} - Sealed Shipping Parcel Photo`;
+    } else if (autoReason === "NOT_AS_DESCRIBED") {
+      autoCondition = "LIKE_NEW";
+      autoDesc = `Features and appearance of ${prodName} differ materially from the catalog specification.`;
+      autoPreset = "no_damage";
+      autoPhotoName = `${prodName} - Product Comparison Photo`;
+    } else {
+      autoCondition = "UNOPENED";
+      autoDesc = `Customer decided not to keep ${prodName}. Item remains completely sealed in original manufacturer packaging.`;
+      autoPreset = "no_damage";
+      autoPhotoName = `${prodName} - Sealed Factory Box Photo`;
+    }
+
+    setReason(autoReason);
+    setCondition(autoCondition);
+    setDescription(autoDesc);
+
+    const p = PRESET_IMAGES[autoPreset];
+    setImage({
+      ...p,
+      sourceName: autoPhotoName,
+    });
+
+    toast.info(`Selected ${o.external_id} — Auto-filled Claim & Photo Evidence`);
   };
 
   // Check URL search parameter for initial scenario
@@ -207,6 +289,13 @@ function NewReturn() {
     city: string;
     state: string;
     total_orders: number;
+    customer_name?: string;
+    external_id?: string;
+    return_rate?: number;
+    total_returns?: number;
+    total_spent?: number;
+    avg_customer_rating?: number;
+    low_rating_count?: number;
   } | null;
 
   return (
@@ -270,7 +359,7 @@ function NewReturn() {
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {DEMO_SCENARIOS.map((s) => {
             const active = selectedScenarioId === s.id;
             return (
@@ -315,7 +404,7 @@ function NewReturn() {
           {/* Step 1: Order Search & Selection */}
           <Panel
             title="Step 1 — Choose the Order"
-            description="Search 4,981 loaded orders by ID reference, customer city, or Brazilian state."
+            description="Search loaded orders by ID, Customer Name (Rahul, Aarav, Neha), Product, City, or State."
           >
             <label htmlFor="order-search" className="sr-only">
               Search orders
@@ -324,49 +413,74 @@ function NewReturn() {
               id="order-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by order ID (e.g. e481, 53cd, 4777), city (sao paulo), or state (SP)…"
+              placeholder="Search by customer (Rahul, Neha, Aarav), order ID (IN-CURRENT-001, ORD_14841), or product (Samsung, Noise)…"
               className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
             />
 
             {/* Selected Order Context Card */}
             {selected && (
               <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-primary/20">
-                  <span className="font-mono font-bold text-primary text-sm">
-                    ORDER CONTEXT: {selected.external_id}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-primary/20">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-primary text-sm">
+                      ORDER: {selected.external_id}
+                    </span>
+                    {(selected as any).is_current_return && (
+                      <span className="rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 font-mono text-[10px] font-bold px-2 py-0.5">
+                        ACTIVE INTAKE CASE
+                      </span>
+                    )}
+                  </div>
                   <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                    LOADED FROM DB
+                    ✓ CUSTOMER PROFILE & ORDER HISTORY LOADED
                   </span>
                 </div>
+
                 <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-muted-foreground">
                   <div>
-                    <span className="text-[10px] uppercase font-mono block">Order Value</span>
+                    <span className="text-[10px] uppercase font-mono block">Customer</span>
+                    <span className="text-sm font-semibold text-foreground">
+                      {selectedCustomer?.customer_name || (selected as any).customer_name || "Verified Customer"}
+                    </span>
+                    <span className="text-[10px] font-mono text-muted-foreground block">
+                      {selectedCustomer?.external_id || (selected as any).customer_id}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-mono block">Order Item & Value</span>
                     <span className="text-sm font-semibold text-foreground font-mono">
                       {formatCurrency(Number(selected.total_price))}
                     </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-mono block">Customer Location</span>
-                    <span className="text-sm font-semibold text-foreground">
-                      {selectedCustomer?.city}, {selectedCustomer?.state}
+                    <span className="text-[10px] text-foreground truncate block">
+                      {(selected as any).product_name || "Item"}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] uppercase font-mono block">Lifetime Orders</span>
-                    <span className="text-sm font-semibold text-foreground font-mono">
-                      {selectedCustomer?.total_orders ?? 1} orders
+                    <span className="text-[10px] uppercase font-mono block">Customer Return History</span>
+                    <span className={`text-sm font-bold font-mono ${
+                      Number(selectedCustomer?.return_rate ?? 0) > 0.3
+                        ? "text-destructive"
+                        : "text-emerald-600 dark:text-emerald-400"
+                    }`}>
+                      {((Number(selectedCustomer?.return_rate ?? 0)) * 100).toFixed(1)}% Rate
+                    </span>
+                    <span className="text-[10px] text-muted-foreground block font-mono">
+                      {selectedCustomer?.total_returns ?? 0} returns / {selectedCustomer?.total_orders ?? 14} orders
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] uppercase font-mono block">Delivery Delay</span>
+                    <span className="text-[10px] uppercase font-mono block">Customer Feedback & Spend</span>
                     <span className="text-sm font-semibold text-foreground font-mono">
-                      {Number(selected.delivery_delay_days) > 0 ? `+${Number(selected.delivery_delay_days).toFixed(1)}d late` : `${Math.abs(Number(selected.delivery_delay_days)).toFixed(1)}d early`}
+                      {selectedCustomer?.avg_customer_rating ? `${Number(selectedCustomer.avg_customer_rating).toFixed(1)}/5.0` : "4.0/5.0"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground block font-mono">
+                      {formatCurrency(Number(selectedCustomer?.total_spent ?? selected.total_price))} lifetime
                     </span>
                   </div>
                 </div>
+
                 <p className="mt-2.5 text-[11px] text-muted-foreground italic border-t border-primary/10 pt-1.5">
-                  ✓ Order metrics will be normalized into the 41-dimensional feature vector for ML inference.
+                  ✓ Full 14-order historical record & behavioral signals fed into the 41-feature XGBoost model and fusion engine.
                 </p>
               </div>
             )}
@@ -381,25 +495,43 @@ function NewReturn() {
                   city: string;
                   state: string;
                   total_orders: number;
+                  customer_name?: string;
+                  return_rate?: number;
+                  total_returns?: number;
                 } | null;
                 const active = o.id === orderId;
+                const isCurrent = (o as any).is_current_return;
+                const custName = (o as any).customer_name || customer?.customer_name;
+                const prodName = (o as any).product_name;
                 return (
                   <button
                     key={o.id}
                     type="button"
-                    onClick={() => {
-                      setOrderId(o.id);
-                      setSelectedScenarioId(null);
-                    }}
+                    onClick={() => selectOrder(o)}
                     aria-pressed={active}
                     className={`flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${active ? "border-primary bg-accent/80 ring-1 ring-primary" : "border-border/70 hover:bg-muted/70"
                       }`}
                   >
                     <div>
-                      <p className="font-mono text-xs text-muted-foreground">{o.external_id}</p>
-                      <p className="text-sm font-medium text-foreground">
-                        {formatCurrency(Number(o.total_price))} · {o.num_items} item{o.num_items === 1 ? "" : "s"} · {customer?.city}, {customer?.state}
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-foreground">{o.external_id}</span>
+                        {isCurrent && (
+                          <span className="rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 font-mono text-[9px] font-bold px-1.5 py-0.5">
+                            DEMO CASE
+                          </span>
+                        )}
+                        {custName && (
+                          <span className="text-xs font-semibold text-primary">· {custName}</span>
+                        )}
+                      </div>
+                      <p className="text-xs font-medium text-foreground mt-0.5">
+                        {prodName ? `${prodName} · ` : ""}{formatCurrency(Number(o.total_price))} · {customer?.city}, {customer?.state}
                       </p>
+                      {customer?.total_orders && customer.total_orders > 1 && (
+                        <p className="text-[11px] font-mono text-muted-foreground">
+                          History: {customer.total_returns ?? 0} returns / {customer.total_orders} orders ({((customer.return_rate ?? 0) * 100).toFixed(0)}% return rate)
+                        </p>
+                      )}
                     </div>
                     <div className="text-right text-xs text-muted-foreground font-mono">
                       <p>

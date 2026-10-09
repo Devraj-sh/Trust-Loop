@@ -1,6 +1,7 @@
 import {
   CHANGE_OF_MIND_WINDOW_DAYS,
   RETURN_WINDOW_DAYS,
+  formatCurrency,
   type ConditionCode,
   type ReasonCode,
   type RuleResult,
@@ -81,25 +82,27 @@ export function evaluatePolicy(
     blocking: false,
   });
 
+  const price = Number(order.total_price);
+  const isHighValue = price >= 25000;
   rules.push({
     id: "high_value",
     label: "Below the high-value inspection threshold",
-    passed: Number(order.total_price) < 500,
-    detail:
-      Number(order.total_price) < 500
-        ? `Order value ${Number(order.total_price).toFixed(2)} is below the 500 inspection threshold.`
-        : `Order value ${Number(order.total_price).toFixed(2)} is at or above 500, so inspection is recommended before refund.`,
+    passed: !isHighValue,
+    detail: isHighValue
+      ? `Order value ${formatCurrency(price)} is at or above ₹25,000; physical verification recommended before refund.`
+      : `Order value ${formatCurrency(price)} is below the ₹25,000 high-value inspection threshold.`,
     blocking: false,
   });
 
+  const delivDays = Number(order.delivery_days ?? order.actual_delivery_days ?? 5);
   rules.push({
     id: "late_delivery",
     label: "Delivery performance context",
     passed: true,
     detail:
-      Number(order.is_late_delivery) === 1
-        ? `Delivered ${Number(order.delivery_delay_days).toFixed(1)} days after the promised date, which supports a service-failure return.`
-        : `Delivered ${Math.abs(Number(order.delivery_delay_days)).toFixed(1)} days before the promised date.`,
+      delivDays > 7
+        ? `Delivered in ${delivDays} days (extended delivery SLA), which supports a customer return.`
+        : `Delivered on schedule within ${delivDays} days.`,
     blocking: false,
   });
 

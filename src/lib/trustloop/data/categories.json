@@ -1,594 +1,92 @@
 [
   {
     "code": 0,
-    "name": "agro_industria_e_comercio",
-    "avg_rating": 3.82,
-    "complaint_rate": 0.2162,
-    "dissatisfaction_rate": 0.2027,
-    "low_rating_pct": 19.54
+    "name": "Smartphones",
+    "category": "Electronics",
+    "avg_rating": 4.25,
+    "complaint_rate": 0.14,
+    "dissatisfaction_rate": 0.16,
+    "low_rating_pct": 12.5
   },
   {
     "code": 1,
-    "name": "alimentos",
-    "avg_rating": 4.19,
-    "complaint_rate": 0.122,
-    "dissatisfaction_rate": 0.1707,
-    "low_rating_pct": 16.39
+    "name": "Laptops & Computers",
+    "category": "Electronics",
+    "avg_rating": 4.35,
+    "complaint_rate": 0.11,
+    "dissatisfaction_rate": 0.13,
+    "low_rating_pct": 9.8
   },
   {
     "code": 2,
-    "name": "alimentos_bebidas",
-    "avg_rating": 4.33,
-    "complaint_rate": 0.0865,
-    "dissatisfaction_rate": 0.0769,
-    "low_rating_pct": 7.06
+    "name": "Audio & Headphones",
+    "category": "Electronics",
+    "avg_rating": 4.1,
+    "complaint_rate": 0.18,
+    "dissatisfaction_rate": 0.21,
+    "low_rating_pct": 16.4
   },
   {
     "code": 3,
-    "name": "artes",
-    "avg_rating": 4.11,
-    "complaint_rate": 0.1455,
-    "dissatisfaction_rate": 0.1273,
-    "low_rating_pct": 13.47
+    "name": "Smartwatches & Wearables",
+    "category": "Electronics",
+    "avg_rating": 4.15,
+    "complaint_rate": 0.16,
+    "dissatisfaction_rate": 0.19,
+    "low_rating_pct": 14.2
   },
   {
     "code": 4,
-    "name": "artes_e_artesanato",
-    "avg_rating": 4.36,
-    "complaint_rate": 0.1053,
-    "dissatisfaction_rate": 0.1053,
-    "low_rating_pct": 7.37
+    "name": "Cameras & Photography",
+    "category": "Electronics",
+    "avg_rating": 4.4,
+    "complaint_rate": 0.09,
+    "dissatisfaction_rate": 0.1,
+    "low_rating_pct": 8.0
   },
   {
     "code": 5,
-    "name": "artigos_de_festas",
-    "avg_rating": 4.0,
-    "complaint_rate": 0.2308,
-    "dissatisfaction_rate": 0.1923,
-    "low_rating_pct": 16.15
+    "name": "Tablets & E-Readers",
+    "category": "Electronics",
+    "avg_rating": 4.3,
+    "complaint_rate": 0.12,
+    "dissatisfaction_rate": 0.14,
+    "low_rating_pct": 10.5
   },
   {
     "code": 6,
-    "name": "artigos_de_natal",
-    "avg_rating": 4.06,
-    "complaint_rate": 0.1538,
-    "dissatisfaction_rate": 0.1077,
-    "low_rating_pct": 9.11
+    "name": "Home Entertainment",
+    "category": "Electronics",
+    "avg_rating": 4.2,
+    "complaint_rate": 0.15,
+    "dissatisfaction_rate": 0.17,
+    "low_rating_pct": 13.0
   },
   {
     "code": 7,
-    "name": "audio",
-    "avg_rating": 3.75,
-    "complaint_rate": 0.1897,
-    "dissatisfaction_rate": 0.2586,
-    "low_rating_pct": 23.09
-  },
-  {
-    "code": 8,
-    "name": "automotivo",
-    "avg_rating": 4.02,
-    "complaint_rate": 0.18,
-    "dissatisfaction_rate": 0.1868,
-    "low_rating_pct": 15.94
-  },
-  {
-    "code": 9,
-    "name": "bebes",
-    "avg_rating": 3.95,
-    "complaint_rate": 0.1806,
-    "dissatisfaction_rate": 0.2035,
-    "low_rating_pct": 17.35
-  },
-  {
-    "code": 10,
-    "name": "bebidas",
-    "avg_rating": 4.03,
-    "complaint_rate": 0.1605,
-    "dissatisfaction_rate": 0.1852,
-    "low_rating_pct": 16.19
-  },
-  {
-    "code": 11,
-    "name": "beleza_saude",
-    "avg_rating": 4.17,
-    "complaint_rate": 0.1318,
-    "dissatisfaction_rate": 0.1588,
-    "low_rating_pct": 13.1
-  },
-  {
-    "code": 12,
-    "name": "brinquedos",
-    "avg_rating": 4.14,
-    "complaint_rate": 0.1417,
-    "dissatisfaction_rate": 0.158,
-    "low_rating_pct": 13.41
-  },
-  {
-    "code": 13,
-    "name": "cama_mesa_banho",
-    "avg_rating": 3.84,
-    "complaint_rate": 0.2136,
-    "dissatisfaction_rate": 0.2466,
-    "low_rating_pct": 19.88
-  },
-  {
-    "code": 14,
-    "name": "casa_conforto",
-    "avg_rating": 3.73,
-    "complaint_rate": 0.2613,
-    "dissatisfaction_rate": 0.2883,
-    "low_rating_pct": 21.02
-  },
-  {
-    "code": 15,
-    "name": "casa_conforto_2",
-    "avg_rating": 4.68,
-    "complaint_rate": 0.0,
-    "dissatisfaction_rate": 0.2,
-    "low_rating_pct": 6.09
-  },
-  {
-    "code": 16,
-    "name": "casa_construcao",
-    "avg_rating": 3.92,
-    "complaint_rate": 0.1778,
-    "dissatisfaction_rate": 0.2267,
-    "low_rating_pct": 18.31
-  },
-  {
-    "code": 17,
-    "name": "cds_dvds_musicais",
-    "avg_rating": 4.64,
-    "complaint_rate": 0.0,
-    "dissatisfaction_rate": 0.0,
-    "low_rating_pct": 0.0
-  },
-  {
-    "code": 18,
-    "name": "cine_foto",
-    "avg_rating": 3.84,
-    "complaint_rate": 0.2143,
-    "dissatisfaction_rate": 0.25,
-    "low_rating_pct": 22.26
-  },
-  {
-    "code": 19,
-    "name": "climatizacao",
-    "avg_rating": 3.87,
-    "complaint_rate": 0.2419,
-    "dissatisfaction_rate": 0.2177,
-    "low_rating_pct": 19.88
-  },
-  {
-    "code": 20,
-    "name": "consoles_games",
-    "avg_rating": 3.95,
-    "complaint_rate": 0.1924,
-    "dissatisfaction_rate": 0.2114,
-    "low_rating_pct": 17.61
-  },
-  {
-    "code": 21,
-    "name": "construcao_ferramentas_construcao",
-    "avg_rating": 4.08,
-    "complaint_rate": 0.165,
-    "dissatisfaction_rate": 0.17,
-    "low_rating_pct": 14.13
-  },
-  {
-    "code": 22,
-    "name": "construcao_ferramentas_ferramentas",
-    "avg_rating": 4.33,
-    "complaint_rate": 0.1026,
-    "dissatisfaction_rate": 0.1282,
-    "low_rating_pct": 11.97
-  },
-  {
-    "code": 23,
-    "name": "construcao_ferramentas_iluminacao",
-    "avg_rating": 3.93,
-    "complaint_rate": 0.2051,
-    "dissatisfaction_rate": 0.1667,
-    "low_rating_pct": 15.27
-  },
-  {
-    "code": 24,
-    "name": "construcao_ferramentas_jardim",
-    "avg_rating": 4.02,
-    "complaint_rate": 0.1705,
-    "dissatisfaction_rate": 0.2273,
-    "low_rating_pct": 19.34
-  },
-  {
-    "code": 25,
-    "name": "construcao_ferramentas_seguranca",
-    "avg_rating": 3.87,
-    "complaint_rate": 0.2308,
-    "dissatisfaction_rate": 0.2418,
-    "low_rating_pct": 21.05
-  },
-  {
-    "code": 26,
-    "name": "cool_stuff",
-    "avg_rating": 4.1,
-    "complaint_rate": 0.1343,
-    "dissatisfaction_rate": 0.1483,
-    "low_rating_pct": 13.5
-  },
-  {
-    "code": 27,
-    "name": "dvds_blu_ray",
+    "name": "Computer Accessories",
+    "category": "Electronics",
     "avg_rating": 4.05,
-    "complaint_rate": 0.1875,
-    "dissatisfaction_rate": 0.1875,
-    "low_rating_pct": 16.04
-  },
-  {
-    "code": 28,
-    "name": "eletrodomesticos",
-    "avg_rating": 4.13,
-    "complaint_rate": 0.1486,
-    "dissatisfaction_rate": 0.1486,
-    "low_rating_pct": 12.98
-  },
-  {
-    "code": 29,
-    "name": "eletrodomesticos_2",
-    "avg_rating": 3.97,
-    "complaint_rate": 0.1667,
-    "dissatisfaction_rate": 0.2111,
-    "low_rating_pct": 16.52
-  },
-  {
-    "code": 30,
-    "name": "eletronicos",
-    "avg_rating": 4.07,
-    "complaint_rate": 0.1335,
-    "dissatisfaction_rate": 0.1779,
-    "low_rating_pct": 15.48
-  },
-  {
-    "code": 31,
-    "name": "eletroportateis",
-    "avg_rating": 4.07,
-    "complaint_rate": 0.1645,
-    "dissatisfaction_rate": 0.1991,
-    "low_rating_pct": 16.63
-  },
-  {
-    "code": 32,
-    "name": "esporte_lazer",
-    "avg_rating": 4.11,
-    "complaint_rate": 0.15,
-    "dissatisfaction_rate": 0.173,
-    "low_rating_pct": 14.26
-  },
-  {
-    "code": 33,
-    "name": "fashion_bolsas_e_acessorios",
-    "avg_rating": 4.1,
-    "complaint_rate": 0.159,
-    "dissatisfaction_rate": 0.1649,
-    "low_rating_pct": 14.37
-  },
-  {
-    "code": 34,
-    "name": "fashion_calcados",
-    "avg_rating": 4.18,
-    "complaint_rate": 0.1329,
-    "dissatisfaction_rate": 0.1445,
-    "low_rating_pct": 12.27
-  },
-  {
-    "code": 35,
-    "name": "fashion_esporte",
-    "avg_rating": 4.38,
-    "complaint_rate": 0.1053,
-    "dissatisfaction_rate": 0.1053,
-    "low_rating_pct": 9.21
-  },
-  {
-    "code": 36,
-    "name": "fashion_roupa_feminina",
-    "avg_rating": 3.52,
-    "complaint_rate": 0.3333,
-    "dissatisfaction_rate": 0.2963,
-    "low_rating_pct": 23.92
-  },
-  {
-    "code": 37,
-    "name": "fashion_roupa_infanto_juvenil",
-    "avg_rating": 4.2,
-    "complaint_rate": 0.2,
-    "dissatisfaction_rate": 0.2,
-    "low_rating_pct": 20.0
-  },
-  {
-    "code": 38,
-    "name": "fashion_roupa_masculina",
-    "avg_rating": 3.56,
-    "complaint_rate": 0.3263,
-    "dissatisfaction_rate": 0.3158,
-    "low_rating_pct": 29.72
-  },
-  {
-    "code": 39,
-    "name": "fashion_underwear_e_moda_praia",
-    "avg_rating": 3.99,
-    "complaint_rate": 0.1509,
-    "dissatisfaction_rate": 0.2075,
-    "low_rating_pct": 17.99
-  },
-  {
-    "code": 40,
-    "name": "ferramentas_jardim",
-    "avg_rating": 4.08,
-    "complaint_rate": 0.1554,
-    "dissatisfaction_rate": 0.1594,
-    "low_rating_pct": 14.38
-  },
-  {
-    "code": 41,
-    "name": "flores",
-    "avg_rating": 4.31,
-    "complaint_rate": 0.1429,
-    "dissatisfaction_rate": 0.1429,
-    "low_rating_pct": 5.95
-  },
-  {
-    "code": 42,
-    "name": "fraldas_higiene",
-    "avg_rating": 3.7,
-    "complaint_rate": 0.25,
-    "dissatisfaction_rate": 0.25,
-    "low_rating_pct": 22.42
-  },
-  {
-    "code": 43,
-    "name": "industria_comercio_e_negocios",
-    "avg_rating": 4.14,
-    "complaint_rate": 0.1471,
-    "dissatisfaction_rate": 0.1471,
-    "low_rating_pct": 11.88
-  },
-  {
-    "code": 44,
-    "name": "informatica_acessorios",
-    "avg_rating": 3.93,
-    "complaint_rate": 0.1818,
-    "dissatisfaction_rate": 0.2117,
-    "low_rating_pct": 18.22
-  },
-  {
-    "code": 45,
-    "name": "instrumentos_musicais",
-    "avg_rating": 4.07,
-    "complaint_rate": 0.1696,
-    "dissatisfaction_rate": 0.1765,
-    "low_rating_pct": 15.58
-  },
-  {
-    "code": 46,
-    "name": "la_cuisine",
-    "avg_rating": 4.23,
-    "complaint_rate": 0.2,
-    "dissatisfaction_rate": 0.2,
-    "low_rating_pct": 16.67
-  },
-  {
-    "code": 47,
-    "name": "livros_importados",
-    "avg_rating": 4.3,
-    "complaint_rate": 0.1613,
-    "dissatisfaction_rate": 0.1613,
-    "low_rating_pct": 16.59
-  },
-  {
-    "code": 48,
-    "name": "livros_interesse_geral",
-    "avg_rating": 4.36,
-    "complaint_rate": 0.0972,
-    "dissatisfaction_rate": 0.1389,
-    "low_rating_pct": 10.95
-  },
-  {
-    "code": 49,
-    "name": "livros_tecnicos",
-    "avg_rating": 4.45,
-    "complaint_rate": 0.0732,
-    "dissatisfaction_rate": 0.0894,
-    "low_rating_pct": 7.85
-  },
-  {
-    "code": 50,
-    "name": "malas_acessorios",
-    "avg_rating": 4.34,
-    "complaint_rate": 0.0917,
-    "dissatisfaction_rate": 0.1089,
-    "low_rating_pct": 9.08
-  },
-  {
-    "code": 51,
-    "name": "market_place",
-    "avg_rating": 3.96,
-    "complaint_rate": 0.1827,
-    "dissatisfaction_rate": 0.1635,
-    "low_rating_pct": 14.24
-  },
-  {
-    "code": 52,
-    "name": "moveis_colchao_e_estofado",
-    "avg_rating": 3.22,
-    "complaint_rate": 0.4,
-    "dissatisfaction_rate": 0.3,
-    "low_rating_pct": 30.53
-  },
-  {
-    "code": 53,
-    "name": "moveis_cozinha_area_de_servico_jantar_e_jardim",
-    "avg_rating": 3.83,
-    "complaint_rate": 0.2234,
-    "dissatisfaction_rate": 0.1809,
-    "low_rating_pct": 15.62
-  },
-  {
-    "code": 54,
-    "name": "moveis_decoracao",
-    "avg_rating": 3.88,
-    "complaint_rate": 0.2194,
-    "dissatisfaction_rate": 0.2273,
-    "low_rating_pct": 19.63
-  },
-  {
-    "code": 55,
-    "name": "moveis_escritorio",
-    "avg_rating": 3.66,
-    "complaint_rate": 0.2427,
-    "dissatisfaction_rate": 0.2945,
-    "low_rating_pct": 22.25
-  },
-  {
-    "code": 56,
-    "name": "moveis_quarto",
-    "avg_rating": 4.03,
-    "complaint_rate": 0.1778,
-    "dissatisfaction_rate": 0.2222,
-    "low_rating_pct": 17.81
-  },
-  {
-    "code": 57,
-    "name": "moveis_sala",
-    "avg_rating": 3.94,
-    "complaint_rate": 0.1923,
-    "dissatisfaction_rate": 0.2051,
-    "low_rating_pct": 17.58
-  },
-  {
-    "code": 58,
-    "name": "musica",
-    "avg_rating": 4.23,
-    "complaint_rate": 0.1111,
-    "dissatisfaction_rate": 0.1111,
-    "low_rating_pct": 12.35
-  },
-  {
-    "code": 59,
-    "name": "outros",
-    "avg_rating": 3.86,
-    "complaint_rate": 0.2197,
-    "dissatisfaction_rate": 0.2295,
-    "low_rating_pct": 20.61
-  },
-  {
-    "code": 60,
-    "name": "papelaria",
-    "avg_rating": 4.2,
-    "complaint_rate": 0.1296,
-    "dissatisfaction_rate": 0.1578,
-    "low_rating_pct": 13.27
-  },
-  {
-    "code": 61,
-    "name": "pc_gamer",
-    "avg_rating": 2.89,
-    "complaint_rate": 0.3333,
-    "dissatisfaction_rate": 0.6667,
-    "low_rating_pct": 46.67
-  },
-  {
-    "code": 62,
-    "name": "pcs",
-    "avg_rating": 4.01,
-    "complaint_rate": 0.0667,
-    "dissatisfaction_rate": 0.1333,
-    "low_rating_pct": 12.44
-  },
-  {
-    "code": 63,
-    "name": "perfumaria",
-    "avg_rating": 4.11,
-    "complaint_rate": 0.1452,
-    "dissatisfaction_rate": 0.1924,
-    "low_rating_pct": 15.89
-  },
-  {
-    "code": 64,
-    "name": "pet_shop",
-    "avg_rating": 4.15,
-    "complaint_rate": 0.1391,
-    "dissatisfaction_rate": 0.1558,
-    "low_rating_pct": 13.56
-  },
-  {
-    "code": 65,
-    "name": "portateis_casa_forno_e_cafe",
-    "avg_rating": 4.23,
-    "complaint_rate": 0.129,
-    "dissatisfaction_rate": 0.1613,
-    "low_rating_pct": 12.19
-  },
-  {
-    "code": 66,
-    "name": "portateis_cozinha_e_preparadores_de_alimentos",
-    "avg_rating": 3.27,
-    "complaint_rate": 0.4,
-    "dissatisfaction_rate": 0.4,
-    "low_rating_pct": 40.0
-  },
-  {
-    "code": 67,
-    "name": "relogios_presentes",
-    "avg_rating": 4.14,
-    "complaint_rate": 0.1264,
-    "dissatisfaction_rate": 0.1573,
-    "low_rating_pct": 13.23
-  },
-  {
-    "code": 68,
-    "name": "seguros_e_servicos",
-    "avg_rating": 2.5,
-    "complaint_rate": 0.5,
-    "dissatisfaction_rate": 0.5,
-    "low_rating_pct": 50.0
-  },
-  {
-    "code": 69,
-    "name": "sinalizacao_e_seguranca",
-    "avg_rating": 4.06,
-    "complaint_rate": 0.1828,
-    "dissatisfaction_rate": 0.1398,
-    "low_rating_pct": 12.85
-  },
-  {
-    "code": 70,
-    "name": "tablets_impressao_imagem",
-    "avg_rating": 3.61,
-    "complaint_rate": 0.2222,
-    "dissatisfaction_rate": 0.1111,
-    "low_rating_pct": 15.11
-  },
-  {
-    "code": 71,
-    "name": "telefonia",
-    "avg_rating": 3.92,
-    "complaint_rate": 0.1702,
-    "dissatisfaction_rate": 0.2178,
+    "complaint_rate": 0.19,
+    "dissatisfaction_rate": 0.22,
     "low_rating_pct": 17.5
   },
   {
-    "code": 72,
-    "name": "telefonia_fixa",
-    "avg_rating": 3.7,
-    "complaint_rate": 0.2845,
-    "dissatisfaction_rate": 0.2672,
-    "low_rating_pct": 21.92
+    "code": 8,
+    "name": "Mobile Accessories",
+    "category": "Electronics",
+    "avg_rating": 3.95,
+    "complaint_rate": 0.22,
+    "dissatisfaction_rate": 0.26,
+    "low_rating_pct": 21.0
   },
   {
-    "code": 73,
-    "name": "utilidades_domesticas",
-    "avg_rating": 4.06,
-    "complaint_rate": 0.1692,
-    "dissatisfaction_rate": 0.1756,
-    "low_rating_pct": 15.2
+    "code": 9,
+    "name": "Smart Home Devices",
+    "category": "Electronics",
+    "avg_rating": 4.28,
+    "complaint_rate": 0.13,
+    "dissatisfaction_rate": 0.15,
+    "low_rating_pct": 11.0
   }
 ]

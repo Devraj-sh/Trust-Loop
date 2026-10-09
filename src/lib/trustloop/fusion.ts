@@ -6,12 +6,14 @@ import type {
   LayeredAdjustment,
   ReasonCode,
 } from "./domain";
+export type { InvestigationScoreResult };
 import type { PolicyResult } from "./policy";
 import type { BehaviourResult } from "./behaviour";
 import type { VisionResult } from "./vision-types";
 import type { ModelResult } from "@/lib/ml/engine";
 import type { NetworkRiskResult } from "./network";
 import type { GeoAdjustmentResult } from "./geo";
+import type { CrossMerchantEvidenceResult } from "./cross-merchant";
 
 export interface FusionResult {
   /** 0-100. High means the evidence agrees that the claim is genuine. */
@@ -32,8 +34,9 @@ export function fuseEvidence(input: {
   reason: ReasonCode;
   network?: NetworkRiskResult | null;
   geo?: GeoAdjustmentResult | null;
+  crossMerchant?: CrossMerchantEvidenceResult | null;
 }): FusionResult {
-  const { model, policy, behaviour, vision, reason, network, geo } = input;
+  const { model, policy, behaviour, vision, reason, network, geo, crossMerchant } = input;
   const evidence: EvidenceItem[] = [];
 
   evidence.push({
@@ -131,6 +134,19 @@ export function fuseEvidence(input: {
     });
   }
 
+  // Cross-Merchant Consortium Evidence (UrbanBasket ⇄ NexaCart)
+  if (crossMerchant?.hasCrossMerchantMatch && crossMerchant.riskLevel !== "CLEAN") {
+    evidence.push({
+      source: "cross_merchant",
+      label: "Cross-merchant consortium intelligence",
+      verdict: crossMerchant.verdict,
+      support: crossMerchant.supportScore,
+      weight: crossMerchant.weight,
+      detail: crossMerchant.summary,
+      available: true,
+    });
+  }
+
   const active = evidence.filter((e) => e.weight > 0);
   const totalWeight = active.reduce((a, e) => a + e.weight, 0) || 1;
   const trust = active.reduce((a, e) => a + e.support * e.weight, 0) / totalWeight;
@@ -189,21 +205,31 @@ export function fuseEvidence(input: {
     });
   }
 
+  // Cross-Merchant Conflict (Clean Local History on NexaCart vs Abusive History on UrbanBasket)
+  if (crossMerchant?.hasCrossMerchantMatch && crossMerchant.riskLevel !== "CLEAN") {
+    conflicts.push({
+      id: "cross_merchant_vs_local_history",
+      label: "Local clean history contradicts cross-merchant abuse pattern",
+      detail: `Customer appears normal on ${crossMerchant.currentMerchant.name}, but consortium intelligence detected ${crossMerchant.matchedMerchant?.profile.totalReturns} suspicious returns (${(crossMerchant.matchedMerchant!.profile.returnRate * 100).toFixed(0)}% return rate) on ${crossMerchant.matchedMerchant?.name}.`,
+    });
+  }
+
   return { trustScore: Math.round(trust * 100), agreement, evidence, conflicts };
 }
 
 /**
  * TrustLoop 2.0 Layered Investigation Score Calculation
- * Final Investigation Score = Base ML Risk + Bounded Network Adjustment + Bounded Geo Adjustment + Evidence Adjustment
+ * Final Investigation Score = Base ML Risk + Bounded Network Adjustment + Bounded Geo Adjustment + Evidence Adjustment + Cross-Merchant Adjustment
  */
 export function calculateInvestigationScore(input: {
   baseTrustScore: number;
   modelRiskScore: number; // 0-1
   network?: NetworkRiskResult | null;
   geo?: GeoAdjustmentResult | null;
+  crossMerchant?: CrossMerchantEvidenceResult | null;
   conflictsCount: number;
 }): InvestigationScoreResult {
-  const { baseTrustScore, modelRiskScore, network, geo, conflictsCount } = input;
+  const { baseTrustScore, modelRiskScore, network, geo, crossMerchant, conflictsCount } = input;
   const adjustments: LayeredAdjustment[] = [];
   const flaggedReasons: string[] = [];
 
@@ -251,14 +277,31 @@ export function calculateInvestigationScore(input: {
     flaggedReasons.push("Customer claim conflicts with visual evidence");
   }
 
+  // 4. Cross-Merchant Consortium adjustment (capped at 25 points)
+  let crossMerchantAdj = 0;
+  if (crossMerchant?.hasCrossMerchantMatch && crossMerchant.riskLevel !== "CLEAN") {
+    crossMerchantAdj = Math.min(25, crossMerchant.adjustmentPoints || 25);
+    adjustments.push({
+      source: "cross_merchant",
+      title: "Cross-Merchant Abuse Flag",
+      points: crossMerchantAdj,
+      reason: crossMerchant.headline,
+      capped: crossMerchantAdj >= 25,
+    });
+    flaggedReasons.push(crossMerchant.headline);
+  }
+
   if (baseRiskPoints >= 50) {
     flaggedReasons.push(`Elevated baseline ML return risk (${baseRiskPoints}%)`);
   }
 
-  const finalInvestigationScore = Math.min(100, Math.max(0, baseRiskPoints + netAdj + geoAdj + evAdj));
+  const finalInvestigationScore = Math.min(
+    100,
+    Math.max(0, baseRiskPoints + netAdj + geoAdj + evAdj + crossMerchantAdj)
+  );
 
   let investigationPriority: InvestigationScoreResult["investigationPriority"] = "LOW";
-  if (finalInvestigationScore >= 75 || netAdj >= 20) {
+  if (finalInvestigationScore >= 75 || netAdj >= 20 || crossMerchantAdj >= 20) {
     investigationPriority = "CRITICAL";
   } else if (finalInvestigationScore >= 55) {
     investigationPriority = "HIGH";
@@ -284,7 +327,6 @@ export interface DecisionResult {
   rationale: string[];
 }
 
-/** Explicit, inspectable decision policy. No hidden thresholds. */
 export function decide(input: {
   fusion: FusionResult;
   policy: PolicyResult;
@@ -292,28 +334,24 @@ export function decide(input: {
   vision: VisionResult | null;
   orderValue: number;
   network?: NetworkRiskResult | null;
+  geo?: GeoAdjustmentResult | null;
+  crossMerchant?: CrossMerchantEvidenceResult | null;
   investigation?: InvestigationScoreResult | null;
+  reason?: ReasonCode;
 }): DecisionResult {
-  const { fusion, policy, model, vision, orderValue, network, investigation } = input;
+  const { fusion, policy, model, vision, orderValue, network, crossMerchant, investigation, reason } = input;
   const rationale: string[] = [];
 
+  // 1. Hard Policy Blocking Violations (e.g. used item for change of mind, window closed)
   if (!policy.eligible) {
+    const failedRules = policy.rules.filter((r) => r.blocking && !r.passed);
     rationale.push(
-      `Blocked by policy — ${policy.rules
-        .filter((r) => r.blocking && !r.passed)
-        .map((r) => r.detail)
-        .join(" ")}`,
+      `Blocked by merchant policy — ${failedRules.map((r) => r.detail).join(" ") || "Ineligible under return rules."}`,
     );
-    if (fusion.trustScore >= 60) {
-      rationale.push(
-        "Evidence otherwise supports the customer, so a human should confirm before declining.",
-      );
-      return { outcome: "MANUAL_REVIEW", confidence: 0.6, rationale };
-    }
-    return { outcome: "DECLINE", confidence: 0.85, rationale };
+    return { outcome: "DECLINE", confidence: 0.9, rationale };
   }
 
-  // Network Syndicate Interception
+  // 2. Fraud Ring / Coordinated Syndicate Interception
   if (network?.ringId && network.networkRisk >= 75) {
     rationale.push(
       `Flagged by Fraud Ring Intelligence: Linked to ${network.ringName || network.ringId} with ${network.networkRisk}/100 network risk.`,
@@ -322,56 +360,79 @@ export function decide(input: {
     return { outcome: "MANUAL_REVIEW", confidence: 0.90, rationale };
   }
 
+  // 3. Cross-Merchant Consortium Interception (UrbanBasket ➔ NexaCart)
+  if (crossMerchant?.hasCrossMerchantMatch && crossMerchant.riskLevel !== "CLEAN") {
+    rationale.push(
+      `Cross-Merchant Consortium Alert: ${crossMerchant.headline}`,
+    );
+    rationale.push(
+      `Customer has ${crossMerchant.matchedMerchant?.profile.totalReturns} return claims (${(crossMerchant.matchedMerchant!.profile.returnRate * 100).toFixed(0)}% return rate) and ₹${crossMerchant.matchedMerchant?.profile.totalRefundAmount.toLocaleString()} in refund exposure on ${crossMerchant.matchedMerchant?.name}. Local clean history on ${crossMerchant.currentMerchant.name} is superseded by consortium evidence.`,
+    );
+    return { outcome: "REFUND_ON_INSPECTION", confidence: 0.92, rationale };
+  }
+
+  // 3. Evidence Conflicts (e.g. claim vs photo discrepancy)
   if (fusion.conflicts.length > 0) {
     rationale.push(
       `Evidence sources disagree: ${fusion.conflicts.map((c) => c.label).join("; ")}.`,
     );
-    return { outcome: "MANUAL_REVIEW", confidence: 0.5, rationale };
+    return { outcome: "MANUAL_REVIEW", confidence: 0.8, rationale };
   }
 
   if (vision?.matchesClaim === false) {
-    rationale.push("The submitted photo does not support the stated condition.");
-    return { outcome: "MANUAL_REVIEW", confidence: 0.65, rationale };
+    rationale.push("The submitted physical photo contradicts the reported return claim.");
+    return { outcome: "MANUAL_REVIEW", confidence: 0.8, rationale };
   }
 
-  if (orderValue >= 500) {
-    rationale.push(
-      `Order value ${orderValue.toFixed(2)} is at or above the 500 inspection threshold.`,
-    );
+  // 4. Physical Inspection Required (functional defects or high-ticket items >= ₹25,000)
+  const isDefect = reason === "DEFECTIVE" || policy.rules.some((r) => r.detail?.toLowerCase().includes("defective"));
+  const isHighValue = orderValue >= 25000;
+  if (isDefect || isHighValue) {
+    if (isDefect) {
+      rationale.push(
+        "Reported functional defect cannot be verified by exterior photos alone; warehouse bench testing mandated.",
+      );
+    }
+    if (isHighValue) {
+      rationale.push(
+        `High-ticket order value (${orderValue.toFixed(2)}) is at or above the ₹25,000 threshold; physical intake inspection recommended prior to refund.`,
+      );
+    }
     rationale.push(
       `Trust score ${fusion.trustScore}/100 with ${(fusion.agreement * 100).toFixed(0)}% source agreement.`,
     );
-    return { outcome: "REFUND_ON_INSPECTION", confidence: 0.7, rationale };
+    return { outcome: "REFUND_ON_INSPECTION", confidence: 0.75, rationale };
   }
 
+  // 5. Automated Approval (Low ML risk, policy compliant, aligned evidence)
   if (
-    fusion.trustScore >= 75 &&
-    model.riskScore < 0.3 &&
-    fusion.agreement >= 0.6 &&
-    (!investigation || investigation.investigationPriority === "LOW")
+    fusion.trustScore >= 65 &&
+    model.riskScore < 0.40 &&
+    fusion.agreement >= 0.50 &&
+    (!investigation || investigation.investigationPriority !== "CRITICAL")
   ) {
-    rationale.push(`Trust score ${fusion.trustScore}/100 with all sources agreeing.`);
+    rationale.push(`Trust score ${fusion.trustScore}/100 with all evidence sources agreeing.`);
     rationale.push(
-      `Model risk ${(model.riskScore * 100).toFixed(1)}% is below the 30% low-risk threshold.`,
+      `Model return risk ${(model.riskScore * 100).toFixed(1)}% is well below the low-risk threshold.`,
     );
-    return { outcome: "AUTO_APPROVE", confidence: 0.85, rationale };
+    rationale.push("Pre-approved for instant automated refund processing.");
+    return { outcome: "AUTO_APPROVE", confidence: 0.88, rationale };
   }
 
-  if (fusion.trustScore < 35 || (investigation && investigation.finalInvestigationScore >= 80)) {
+  // 6. Elevated Risk Anomaly Band
+  if (model.riskScore >= 0.60 || fusion.trustScore < 45 || (investigation && investigation.finalInvestigationScore >= 70)) {
     rationale.push(
-      `Trust score ${fusion.trustScore}/100 with investigation score ${investigation?.finalInvestigationScore ?? "elevated"}/100.`,
+      `Elevated risk profile: Model scored ${(model.riskScore * 100).toFixed(1)}% return risk (Investigation score ${investigation?.finalInvestigationScore ?? "elevated"}/100).`,
     );
     rationale.push(
-      "Evidence points away from an authentic claim, but a human investigator confirms every decline.",
+      "Signals indicate potential return abuse; human investigator confirmation required.",
     );
-    return { outcome: "MANUAL_REVIEW", confidence: 0.6, rationale };
+    return { outcome: "MANUAL_REVIEW", confidence: 0.70, rationale };
   }
 
+  // 7. Middle Band Review
   rationale.push(
-    `Trust score ${fusion.trustScore}/100 sits between the auto-approve and decline bands.`,
-  );
-  rationale.push(
-    `Model risk ${(model.riskScore * 100).toFixed(1)}%, source agreement ${(fusion.agreement * 100).toFixed(0)}%.`,
+    `Trust score ${fusion.trustScore}/100 sits between auto-approve and decline bands (Model risk ${(model.riskScore * 100).toFixed(1)}%).`,
   );
   return { outcome: "MANUAL_REVIEW", confidence: 0.55, rationale };
 }

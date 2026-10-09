@@ -30,6 +30,19 @@ import {
   AlertTriangle,
   ArrowRight,
   ExternalLink,
+  Cpu,
+  Layers,
+  TrendingUp,
+  TrendingDown,
+  Search,
+  Sliders,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  Store,
+  ArrowDown,
+  ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 
 const passportQuery = (id: string) =>
@@ -80,8 +93,11 @@ function TrustPassport() {
   const [reviewer, setReviewer] = useState("Agent #42 (Trust & Safety)");
   const [verdict, setVerdict] = useState<DecisionOutcome>("AUTO_APPROVE");
   const [notes, setNotes] = useState("");
-  const [activeTab, setActiveTab] = useState<"ml" | "policy" | "vision" | "behaviour" | "network" | "geo">("ml");
+  const [activeTab, setActiveTab] = useState<"ml" | "policy" | "vision" | "behaviour" | "network" | "geo" | "cross_merchant">("ml");
   const [selectedTraceNode, setSelectedTraceNode] = useState<string | null>(null);
+  const [selectedModelKey, setSelectedModelKey] = useState<"xgboost" | "logistic_regression" | "decision_tree">("xgboost");
+  const [featureSearchQuery, setFeatureSearchQuery] = useState("");
+  const [showAllFeaturesTable, setShowAllFeaturesTable] = useState(false);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -109,15 +125,44 @@ function TrustPassport() {
       external_id: string;
       total_price: number;
       delivered_at: string | null;
-      delivery_delay_days: number;
-      review_score: number;
+      delivery_delay_days?: number;
+      delivery_days?: number;
+      review_score?: number;
+      customer_rating?: number;
       num_items: number;
+      product_name?: string;
+      brand?: string;
       customers: {
+        id?: string;
+        external_id?: string;
+        customer_name?: string;
         city: string;
         state: string;
         total_orders: number;
+        total_returns?: number;
+        return_rate?: number;
         total_spent: number;
-        avg_review_score: number;
+        avg_order_value?: number;
+        avg_customer_rating?: number;
+        avg_review_score?: number;
+        low_rating_count?: number;
+        past_orders?: {
+          order_id: string;
+          order_date: string;
+          product_name: string;
+          category: string;
+          brand: string;
+          quantity: number;
+          amount_inr: number;
+          original_price_inr?: number;
+          discount_percent?: number;
+          delivery_days: number;
+          customer_rating: number;
+          payment_method?: string;
+          return_status: string;
+          return_reason: string | null;
+          evidence_image_url?: string | null;
+        }[];
       };
       product_categories: { name: string };
     } | null;
@@ -130,6 +175,28 @@ function TrustPassport() {
     risk_level: string;
     confidence: number;
     contributions: { feature: string; value: number; contribution: number }[];
+    all_models?: {
+      models: Record<
+        string,
+        {
+          modelLabel: string;
+          modelVersion: string;
+          riskScore: number;
+          riskLevel: string;
+          confidence: number;
+          contributions: { feature: string; value: number; contribution: number }[];
+          rawOutput: Record<string, any>;
+        }
+      >;
+      consensus: {
+        agreement_rate: number;
+        all_agree: boolean;
+        consensus_band: string;
+        avg_risk_score: number;
+        contributions: { feature: string; value: number; contribution: number }[];
+      };
+    };
+    feature_vector?: Record<string, number>;
   } | null;
 
   const policy = data.policy as unknown as {
@@ -194,11 +261,14 @@ function TrustPassport() {
 
   const network = data.network;
   const geo = data.geo;
+  const crossMerchant = (data as any).cross_merchant || (data as any).crossMerchant;
+  const hasCrossMerchantFlag = Boolean(crossMerchant?.hasCrossMerchantMatch && crossMerchant.riskLevel !== "CLEAN");
   const investigation = data.investigation;
 
   // Evidence conflict detection
   const hasConflict = Boolean(
-    (fusion?.conflicts && fusion.conflicts.length > 0) ||
+    hasCrossMerchantFlag ||
+      (fusion?.conflicts && fusion.conflicts.length > 0) ||
       (vision && vision.matches_claim === false && (request.reason_code === "DAMAGED" || request.reason_code === "DEFECTIVE")),
   );
 
@@ -209,6 +279,38 @@ function TrustPassport() {
     ...(prediction?.contributions ?? []).map((c) => Math.abs(c.contribution)),
     0.0001,
   );
+
+  const multiModels = prediction?.all_models;
+  const activeModel =
+    multiModels?.models?.[selectedModelKey] || {
+      modelLabel: prediction?.model_label || "XGBoost Return-Risk (139 Trees)",
+      modelVersion: "2.1.0",
+      riskScore: prediction?.risk_score ?? 0.35,
+      riskLevel: prediction?.risk_level ?? "MEDIUM",
+      confidence: prediction?.confidence ?? 0.85,
+      contributions: prediction?.contributions ?? [],
+      rawOutput: {},
+    };
+
+  const activeContributions = activeModel.contributions || [];
+  const maxModelContribution = Math.max(
+    ...activeContributions.map((c) => Math.abs(c.contribution)),
+    0.0001,
+  );
+
+  const riskDrivers = activeContributions.filter((c) => c.contribution > 0);
+  const trustFactors = activeContributions.filter((c) => c.contribution < 0);
+
+  const featureVectorData = prediction?.feature_vector || {};
+  const allFeatureEntries = Object.entries(featureVectorData).map(([key, val]) => {
+    const matchedContrib = activeContributions.find((c) => c.feature === key);
+    return {
+      key,
+      label: featureLabel(key),
+      value: val,
+      contribution: matchedContrib?.contribution ?? 0,
+    };
+  });
 
   return (
     <AppShell>
@@ -231,7 +333,7 @@ function TrustPassport() {
 
             <p className="mt-2 text-sm text-slate-300 max-w-2xl">
               Claim: <span className="font-semibold text-white">{request.reason_code.replace(/_/g, " ")}</span> ({request.claimed_condition.toLowerCase()}) ·{" "}
-              Customer: <span className="text-white">{order?.customers?.city ?? "Unknown"}, {order?.customers?.state ?? ""}</span> ·{" "}
+              Customer: <span className="text-white font-medium">{order?.customers?.customer_name || (order as any)?.customer_name || "Customer"} ({order?.customers?.city ?? "Unknown"}, {order?.customers?.state ?? ""})</span> ·{" "}
               Submitted {new Date(request.created_at).toLocaleString()}
             </p>
           </div>
@@ -256,20 +358,29 @@ function TrustPassport() {
         {/* Quick Meta Grid */}
         <div className="mt-6 pt-5 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
           <div>
-            <span className="text-slate-500 uppercase text-[10px] block">ORDER ID</span>
-            <span className="text-slate-200 font-semibold">{order?.external_id ?? "Direct reference"}</span>
+            <span className="text-slate-500 uppercase text-[10px] block">ORDER & ITEM</span>
+            <span className="text-slate-200 font-semibold block truncate">
+              {order?.product_name || order?.external_id || "Direct reference"}
+            </span>
+            <span className="text-[10px] text-slate-400 font-normal">
+              {order?.external_id}
+            </span>
           </div>
           <div>
             <span className="text-slate-500 uppercase text-[10px] block">ORDER VALUE</span>
             <span className="text-slate-200 font-semibold">{order ? formatCurrency(Number(order.total_price)) : "—"}</span>
           </div>
           <div>
-            <span className="text-slate-500 uppercase text-[10px] block">CATEGORY</span>
-            <span className="text-slate-200 font-semibold">{order?.product_categories?.name ?? "General merchandise"}</span>
+            <span className="text-slate-500 uppercase text-[10px] block">CUSTOMER HISTORICAL RETURN RATE</span>
+            <span className={`font-semibold ${Number(order?.customers?.return_rate ?? 0) > 0.3 ? "text-rose-400" : "text-emerald-400"}`}>
+              {((Number(order?.customers?.return_rate ?? 0)) * 100).toFixed(1)}% ({order?.customers?.total_returns ?? 0} returns)
+            </span>
           </div>
           <div>
-            <span className="text-slate-500 uppercase text-[10px] block">LIFETIME ORDERS</span>
-            <span className="text-slate-200 font-semibold">{order?.customers?.total_orders ?? 1} historical order(s)</span>
+            <span className="text-slate-500 uppercase text-[10px] block">LIFETIME ORDERS & SPEND</span>
+            <span className="text-slate-200 font-semibold">
+              {order?.customers?.total_orders ?? 14} orders · {formatCurrency(Number(order?.customers?.total_spent ?? order?.total_price ?? 0))}
+            </span>
           </div>
         </div>
       </section>
@@ -430,7 +541,7 @@ function TrustPassport() {
               <p className="text-slate-500 mt-0.5">
                 {geo && geo.hotspotScore >= 55
                   ? `Located in elevated return hotspot ${geo.areaName} (+${geo.adjustment} priority adjustment).`
-                  : `Normal return density area (${geo?.areaName ?? "Brazil"} with ${(geo?.metrics.returnRate ?? 0.12) * 100}% return rate).`}
+                  : `Normal return density area (${geo?.areaName ?? "India"} with ${(geo?.metrics.returnRate ?? 0.12) * 100}% return rate).`}
               </p>
             </div>
           </div>
@@ -458,7 +569,7 @@ function TrustPassport() {
           <div className="space-y-3 text-xs">
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Current Area:</span>
-              <strong className="text-slate-900">{geo?.areaName ?? "São Paulo (SP)"}</strong>
+              <strong className="text-slate-900">{geo?.areaName ?? "Maharashtra (MH)"}</strong>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Return Rate:</span>
@@ -535,6 +646,119 @@ function TrustPassport() {
           </div>
         </div>
       </div>
+
+      {/* CROSS-MERCHANT CONSORTIUM INTELLIGENCE BANNER */}
+      {hasCrossMerchantFlag && crossMerchant && (
+        <section className="mb-8 rounded-2xl border-2 border-red-500 bg-red-500/10 p-6 shadow-md dark:bg-red-950/40">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="size-3.5 rounded-full bg-red-500 animate-ping" />
+              <div>
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-red-700 dark:text-red-300 block">
+                  CROSS-MERCHANT NETWORK CONSORTIUM ALERT · URBANBASKET ⇄ NEXACART
+                </span>
+                <h2 className="font-display text-lg font-bold text-red-900 dark:text-red-100">
+                  {crossMerchant.headline}
+                </h2>
+              </div>
+            </div>
+            <span className="rounded bg-red-500/20 text-red-800 dark:text-red-200 font-mono text-xs font-bold px-3 py-1 border border-red-500/40 uppercase">
+              Action: Reverse Logistics Inspection Mandated
+            </span>
+          </div>
+
+          {/* 3-Pillar Cross-Merchant Flow Diagram */}
+          <div className="mt-5 grid gap-4 lg:grid-cols-3 pt-2">
+            {/* Merchant 1: UrbanBasket */}
+            <div className="rounded-xl border border-red-500/30 bg-card p-4 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500" />
+                  URBANBASKET
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300">
+                  SUSPICIOUS HISTORY
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[11px]">
+                Matching customer profile stored in demo merchant system:
+              </p>
+              <div className="grid grid-cols-2 gap-2 font-mono text-[11px] pt-1 border-t border-border/60">
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Orders / Returns</span>
+                  <span className="font-bold text-foreground">
+                    {crossMerchant.matchedMerchant?.profile.totalOrders} orders · {crossMerchant.matchedMerchant?.profile.totalReturns} returns
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Return Rate</span>
+                  <span className="font-bold text-red-600 dark:text-red-400">
+                    {((crossMerchant.matchedMerchant?.profile.returnRate ?? 0.667) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+              <div className="text-[11px] text-red-700 dark:text-red-300 bg-red-500/10 p-2 rounded-lg font-medium">
+                ⚠ {crossMerchant.matchedMerchant?.profile.flags[0]}
+              </div>
+            </div>
+
+            {/* Merchant 2: NexaCart */}
+            <div className="rounded-xl border border-amber-500/30 bg-card p-4 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  NEXACART (Current)
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                  NORMAL HISTORY
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[11px]">
+                Customer initiates return request on NexaCart:
+              </p>
+              <div className="grid grid-cols-2 gap-2 font-mono text-[11px] pt-1 border-t border-border/60">
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Orders / Returns</span>
+                  <span className="font-bold text-foreground">
+                    {crossMerchant.currentMerchant.profile.orders} order · {crossMerchant.currentMerchant.profile.returns} returns
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px]">Local Return Rate</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">0.0% (Clean)</span>
+                </div>
+              </div>
+              <div className="text-[11px] text-muted-foreground bg-muted/40 p-2 rounded-lg">
+                Without consortium intelligence, NexaCart would naively auto-approve this high-value return claim.
+              </div>
+            </div>
+
+            {/* Pillar 3: TrustLoop Cross-Merchant Consortium */}
+            <div className="rounded-xl border border-primary/40 bg-card p-4 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm text-primary flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-primary" />
+                  TRUSTLOOP ENGINE
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-primary/10 text-primary">
+                  CONSORTIUM EVIDENCE
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[11px]">
+                Multi-pillar intelligence combines with Cross-Merchant Evidence:
+              </p>
+              <ul className="space-y-1 text-[11px] text-foreground font-medium pt-1 border-t border-border/60">
+                <li className="flex items-center gap-1.5">✓ Existing ML Model (XGBoost)</li>
+                <li className="flex items-center gap-1.5">✓ Existing Behaviour & Policy Engine</li>
+                <li className="flex items-center gap-1.5">✓ Existing Vision Evidence Analysis</li>
+                <li className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold">
+                  ★ NEW CROSS-MERCHANT EVIDENCE (+25 Points)
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* SECTION 21 & 22: Prominent Evidence Alignment Hero Banner */}
       {hasConflict ? (
@@ -730,8 +954,8 @@ function TrustPassport() {
                   </div>
                   <div className="rounded-lg border border-border p-2 bg-muted/20">
                     <span className="text-muted-foreground block text-[10px]">HIGH VALUE THRESHOLD?</span>
-                    <span className={Number(order?.total_price ?? 0) >= 500 ? "text-amber-600 dark:text-amber-400 font-bold" : "text-foreground font-bold"}>
-                      {Number(order?.total_price ?? 0) >= 500 ? "YES (&ge; $500)" : "NO (< $500)"}
+                    <span className={Number(order?.total_price ?? 0) >= 25000 ? "text-amber-600 dark:text-amber-400 font-bold" : "text-foreground font-bold"}>
+                      {Number(order?.total_price ?? 0) >= 25000 ? "YES (≥ ₹25,000)" : "NO (< ₹25,000)"}
                     </span>
                   </div>
                   <div className="rounded-lg border border-border p-2 bg-muted/20">
@@ -741,6 +965,12 @@ function TrustPassport() {
                   <div className="rounded-lg border border-border p-2 bg-muted/20">
                     <span className="text-muted-foreground block text-[10px]">SOURCE AGREEMENT</span>
                     <span className="text-foreground font-bold">{Math.round((fusion?.agreement ?? 0) * 100)}%</span>
+                  </div>
+                  <div className="rounded-lg border border-border p-2 bg-muted/20">
+                    <span className="text-muted-foreground block text-[10px]">CROSS-MERCHANT MATCH?</span>
+                    <span className={hasCrossMerchantFlag ? "text-destructive font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold"}>
+                      {hasCrossMerchantFlag ? "YES (UrbanBasket Abuse)" : "NO (Clean Consortium)"}
+                    </span>
                   </div>
                 </div>
 
@@ -851,63 +1081,426 @@ function TrustPassport() {
               >
                 06 GEO HOTSPOT
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("cross_merchant")}
+                className={`rounded-lg px-3 py-1.5 transition-colors relative flex items-center gap-1.5 ${
+                  activeTab === "cross_merchant"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                <span>07 CROSS-MERCHANT INTEL</span>
+                {hasCrossMerchantFlag && (
+                  <span className="size-2 rounded-full bg-red-500 animate-pulse" />
+                )}
+              </button>
             </div>
 
-            {/* TAB 1: ML Model & 41 Features */}
+            {/* TAB 1: ML Model & 38 Features (XGBoost, Logistic Regression, Decision Tree) */}
             {activeTab === "ml" && (
-              <div className="pt-4 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-                  <div>
-                    <span className="text-muted-foreground">Algorithm: </span>
-                    <span className="font-semibold text-foreground">{prediction?.model_label ?? "XGBoost"}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Engineered Features: </span>
-                    <span className="font-semibold text-foreground">41 Dimensions</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Calculated Risk: </span>
-                    <span className="font-semibold text-foreground">
-                      {prediction ? `${(prediction.risk_score * 100).toFixed(2)}%` : "—"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Section 24: Horizontal contribution bars */}
-                <div className="space-y-3 pt-2">
-                  <p className="text-xs font-semibold text-foreground">
-                    Top Feature Contributions (Shapley / Tree Attributions)
-                  </p>
-                  {(prediction?.contributions ?? []).slice(0, 7).map((c) => {
-                    const isRisk = c.contribution > 0;
-                    const magnitude = Math.min(100, Math.round((Math.abs(c.contribution) / maxContribution) * 100));
-                    return (
-                      <div key={c.feature} className="text-xs space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-foreground">{featureLabel(c.feature)}</span>
-                          <span className="font-mono text-muted-foreground">
-                            Val: {Number(c.value).toFixed(2)} · {isRisk ? "+Risk" : "-Risk"} ({(c.contribution * 100).toFixed(1)}%)
-                          </span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-muted overflow-hidden flex">
-                          <div
-                            className={`h-full rounded-full ${isRisk ? "bg-destructive" : "bg-emerald-500"}`}
-                            style={{ width: `${Math.max(4, magnitude)}%` }}
-                          />
-                        </div>
+              <div className="pt-4 space-y-6">
+                {/* 1. Multi-Model Consensus & Algorithm Switcher */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="w-4 h-4 text-[#1769E0]" />
+                      <span className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
+                        MULTI-MODEL RETURN-RISK CONSENSUS ENGINE
+                      </span>
+                    </div>
+                    {multiModels?.consensus && (
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`font-mono text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                            multiModels.consensus.all_agree
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                          }`}
+                        >
+                          {multiModels.consensus.all_agree
+                            ? `✓ Consensus: 3/3 Models Agree (${multiModels.consensus.consensus_band} BAND)`
+                            : `⚠ Split Consensus (${(multiModels.consensus.agreement_rate * 100).toFixed(0)}% Agreement)`}
+                        </span>
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          Avg Risk: {(multiModels.consensus.avg_risk_score * 100).toFixed(1)}%
+                        </span>
                       </div>
-                    );
-                  })}
+                    )}
+                  </div>
+
+                  {/* 3 Model Selection Cards */}
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      {
+                        key: "xgboost" as const,
+                        label: "XGBoost (139 Trees)",
+                        badge: "PRIMARY PROD",
+                        desc: "Cover-weighted gradient boosted decision trees with cover path attribution",
+                        model: multiModels?.models?.["xgboost"] || activeModel,
+                      },
+                      {
+                        key: "logistic_regression" as const,
+                        label: "Logistic Regression",
+                        badge: "L2 REGULARIZED",
+                        desc: "Standardized beta coefficients with monotonic log-odds margins",
+                        model: multiModels?.models?.["logistic_regression"],
+                      },
+                      {
+                        key: "decision_tree" as const,
+                        label: "Decision Tree (CART)",
+                        badge: "INTERPRETABLE",
+                        desc: "Orthogonal binary recursive partitioning tree with Gini splits",
+                        model: multiModels?.models?.["decision_tree"],
+                      },
+                    ].map((item) => {
+                      const isSelected = selectedModelKey === item.key;
+                      const score = item.model ? (item.model.riskScore * 100).toFixed(1) : "—";
+                      const band = item.model?.riskLevel ?? "MEDIUM";
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setSelectedModelKey(item.key)}
+                          className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden ${
+                            isSelected
+                              ? "border-[#1769E0] bg-[#1769E0]/5 ring-2 ring-[#1769E0]/30 shadow-xs"
+                              : "border-border/80 bg-card hover:border-slate-300 dark:hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className="font-mono text-[10px] font-bold text-[#1769E0] uppercase tracking-wider">
+                              {item.badge}
+                            </span>
+                            <span
+                              className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                band === "HIGH"
+                                  ? "bg-destructive/10 text-destructive"
+                                  : band === "LOW"
+                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              }`}
+                            >
+                              {band}
+                            </span>
+                          </div>
+                          <div className="font-semibold text-foreground text-xs">{item.label}</div>
+                          <div className="mt-2 flex items-baseline gap-2">
+                            <span className="font-mono text-xl font-bold text-foreground">{score}%</span>
+                            <span className="text-[11px] text-muted-foreground font-mono">risk prob.</span>
+                          </div>
+                          <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+                            {item.desc}
+                          </p>
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 size-2 rounded-full bg-[#1769E0]" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Responsible AI Fairness Disclosure */}
+                {/* 2. Selected Model Metadata Card */}
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2.5 text-xs">
+                    <div>
+                      <span className="font-mono text-muted-foreground">Active Model Architecture: </span>
+                      <strong className="font-mono text-foreground font-semibold">
+                        {activeModel.modelLabel}
+                      </strong>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono text-[11px]">
+                      <span>Confidence: {(Number(activeModel.confidence) * 100).toFixed(0)}%</span>
+                      <span>Version: {activeModel.modelVersion}</span>
+                      <span>Features: 38 Dimensions</span>
+                    </div>
+                  </div>
+
+                  {/* Mathematical details based on model */}
+                  <div className="text-xs text-muted-foreground leading-relaxed">
+                    {selectedModelKey === "xgboost" && (
+                      <p>
+                        <strong className="text-foreground">XGBoost Decision Trace: </strong>
+                        Evaluated across 139 shallow boosted trees. Log-odds margin:{" "}
+                        <span className="font-mono text-foreground font-semibold">
+                          {activeModel.rawOutput?.["margin"] !== undefined
+                            ? Number(activeModel.rawOutput["margin"]).toFixed(4)
+                            : "calculated"}
+                        </span>
+                        . Passed through sigmoid transform to yield{" "}
+                        <span className="font-mono text-foreground font-semibold">
+                          {(activeModel.riskScore * 100).toFixed(2)}%
+                        </span>{" "}
+                        posterior risk probability. Feature attributions represent cover-weighted split gains along decision paths.
+                      </p>
+                    )}
+                    {selectedModelKey === "logistic_regression" && (
+                      <p>
+                        <strong className="text-foreground">Logistic Regression Decision Trace: </strong>
+                        Standardized linear summation:{" "}
+                        <span className="font-mono text-foreground font-semibold">
+                          z = β₀ + Σ(βᵢ · xᵢ) ={" "}
+                          {activeModel.rawOutput?.["z"] !== undefined
+                            ? Number(activeModel.rawOutput["z"]).toFixed(4)
+                            : "calculated"}
+                        </span>
+                        . Evaluated via standard logistic sigmoid function. Feature contributions correspond to individual signed beta terms (βᵢ · xᵢ).
+                      </p>
+                    )}
+                    {selectedModelKey === "decision_tree" && (
+                      <p>
+                        <strong className="text-foreground">CART Decision Tree Trace: </strong>
+                        Traversed orthogonal binary splits down to leaf node ID:{" "}
+                        <span className="font-mono text-foreground font-semibold">
+                          {activeModel.rawOutput?.["leaf_id"] ?? "terminal"}
+                        </span>
+                        . Tree depth: {activeModel.rawOutput?.["depth"] ?? 8} levels. Leaf risk probability calculated by empirical training distribution.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Dual-Directional Feature Attribution (Risk Drivers vs Mitigating Trust Factors) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        Feature Attribution Spectrum ({activeModel.modelLabel.split(" ")[0]})
+                      </h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Deconstruction of positive drivers that escalated risk vs. mitigating signals that lowered risk.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Column 1: Risk Escalators */}
+                    <div className="rounded-xl border border-destructive/20 bg-destructive/[0.02] p-3.5 space-y-3">
+                      <div className="flex items-center justify-between border-b border-destructive/15 pb-2">
+                        <span className="font-mono text-xs font-bold text-destructive flex items-center gap-1.5">
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          Risk Escalators (+Risk)
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {riskDrivers.length} features
+                        </span>
+                      </div>
+
+                      {riskDrivers.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-2 text-center">
+                          No significant positive risk drivers detected.
+                        </p>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {riskDrivers.slice(0, 6).map((c) => {
+                            const magnitude = Math.min(
+                              100,
+                              Math.round((Math.abs(c.contribution) / maxModelContribution) * 100),
+                            );
+                            return (
+                              <div key={c.feature} className="text-xs space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-foreground text-[11px]">
+                                    {featureLabel(c.feature)}
+                                  </span>
+                                  <span className="font-mono text-destructive text-[11px] font-semibold">
+                                    +{(c.contribution * 100).toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden flex">
+                                    <div
+                                      className="h-full rounded-full bg-destructive transition-all duration-300"
+                                      style={{ width: `${Math.max(6, magnitude)}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-mono text-[10px] text-muted-foreground shrink-0 w-14 text-right">
+                                    {typeof c.value === "number"
+                                      ? c.value >= 1000
+                                        ? `₹${c.value.toLocaleString("en-IN")}`
+                                        : c.value % 1 === 0
+                                          ? c.value
+                                          : c.value.toFixed(2)
+                                      : c.value}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Column 2: Mitigating Trust Factors */}
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.02] p-3.5 space-y-3">
+                      <div className="flex items-center justify-between border-b border-emerald-500/15 pb-2">
+                        <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                          <TrendingDown className="w-3.5 h-3.5" />
+                          Mitigating Trust Factors (-Risk)
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {trustFactors.length} features
+                        </span>
+                      </div>
+
+                      {trustFactors.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-2 text-center">
+                          No significant mitigating factors detected.
+                        </p>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {trustFactors.slice(0, 6).map((c) => {
+                            const magnitude = Math.min(
+                              100,
+                              Math.round((Math.abs(c.contribution) / maxModelContribution) * 100),
+                            );
+                            return (
+                              <div key={c.feature} className="text-xs space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-foreground text-[11px]">
+                                    {featureLabel(c.feature)}
+                                  </span>
+                                  <span className="font-mono text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
+                                    {(c.contribution * 100).toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden flex">
+                                    <div
+                                      className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                                      style={{ width: `${Math.max(6, magnitude)}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-mono text-[10px] text-muted-foreground shrink-0 w-14 text-right">
+                                    {typeof c.value === "number"
+                                      ? c.value >= 1000
+                                        ? `₹${c.value.toLocaleString("en-IN")}`
+                                        : c.value % 1 === 0
+                                          ? c.value
+                                          : c.value.toFixed(2)
+                                      : c.value}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Complete 38-Engineered Feature Vector Explorer */}
+                <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                        <Layers className="w-3.5 h-3.5 text-[#1769E0]" />
+                        Indian E-Commerce 38-Feature Vector Explorer
+                      </h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Inspect all engineered feature values computed specifically for this order.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllFeaturesTable(!showAllFeaturesTable)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/30 hover:bg-muted font-mono text-xs font-semibold text-foreground transition-colors"
+                    >
+                      <span>{showAllFeaturesTable ? "Collapse Table" : "Inspect All 38 Features"}</span>
+                      {showAllFeaturesTable ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+
+                  {showAllFeaturesTable && (
+                    <div className="pt-2 space-y-3 border-t border-border/60">
+                      {/* Search bar */}
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          type="text"
+                          value={featureSearchQuery}
+                          onChange={(e) => setFeatureSearchQuery(e.target.value)}
+                          placeholder="Filter features by name or key (e.g. return_rate, delivery, amount)..."
+                          className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-[#1769E0]"
+                        />
+                      </div>
+
+                      {/* Feature Table */}
+                      <div className="overflow-x-auto max-h-80 border border-border rounded-lg">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-muted/80 backdrop-blur-xs z-10">
+                            <tr className="border-b border-border text-left font-mono uppercase text-[10px] text-muted-foreground">
+                              <th className="py-2 px-3 font-semibold">Feature Dimension</th>
+                              <th className="py-2 px-3 font-semibold">Feature Key</th>
+                              <th className="py-2 px-3 font-semibold text-right">Computed Value</th>
+                              <th className="py-2 px-3 font-semibold text-right">Active Model Impact</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/60 font-mono text-[11px]">
+                            {allFeatureEntries
+                              .filter(
+                                (f) =>
+                                  !featureSearchQuery ||
+                                  f.label.toLowerCase().includes(featureSearchQuery.toLowerCase()) ||
+                                  f.key.toLowerCase().includes(featureSearchQuery.toLowerCase()),
+                              )
+                              .map((f) => {
+                                const isPositive = f.contribution > 0;
+                                const isNegative = f.contribution < 0;
+                                return (
+                                  <tr key={f.key} className="hover:bg-muted/30">
+                                    <td className="py-2 px-3 font-sans font-medium text-foreground">
+                                      {f.label}
+                                    </td>
+                                    <td className="py-2 px-3 text-muted-foreground text-[10px]">
+                                      {f.key}
+                                    </td>
+                                    <td className="py-2 px-3 text-right font-semibold text-foreground">
+                                      {typeof f.value === "number"
+                                        ? f.value >= 1000
+                                          ? `₹${f.value.toLocaleString("en-IN")}`
+                                          : f.value % 1 === 0
+                                            ? f.value
+                                            : f.value.toFixed(4)
+                                        : String(f.value)}
+                                    </td>
+                                    <td className="py-2 px-3 text-right">
+                                      {isPositive ? (
+                                        <span className="text-destructive font-semibold">
+                                          +{(f.contribution * 100).toFixed(1)}% (Risk)
+                                        </span>
+                                      ) : isNegative ? (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                          {(f.contribution * 100).toFixed(1)}% (Trust)
+                                        </span>
+                                      ) : (
+                                        <span className="text-muted-foreground">Neutral</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Responsible AI Fairness Disclosure */}
                 <div className="rounded-xl border border-border/80 bg-muted/40 p-3.5 text-xs text-muted-foreground">
                   <span className="font-bold text-foreground font-mono uppercase text-[10px] block">
-                    MODEL CONTRIBUTION ≠ PROOF OF FRAUD
+                    RESPONSIBLE AI: MODEL ATTRIBUTION ≠ AUTOMATIC DECLINE
                   </span>
-                  <p className="mt-1">
-                    These are statistical model signals that influenced the risk score. They do not constitute proof of customer wrongdoing 
-                    and are never used in isolation without corroborating policy and visual evidence.
+                  <p className="mt-1 leading-relaxed">
+                    XGBoost, Logistic Regression, and CART trees output probabilistic risk attributions based on statistical distributions. 
+                    These signals are never used in isolation to automatically decline claims without corroborating policy evaluations and visual inspection proofs.
                   </p>
                 </div>
               </div>
@@ -1011,24 +1604,185 @@ function TrustPassport() {
               </div>
             )}
 
-            {/* TAB 4: Behaviour Signals */}
+            {/* TAB 4: Behaviour Signals & Customer Historical Ledger */}
             {activeTab === "behaviour" && (
-              <div className="pt-4 space-y-3 text-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-border/60">
-                  <span className="font-mono text-muted-foreground">Account Concern Score:</span>
-                  <span className="font-mono font-bold text-foreground">
-                    {behaviour ? `${(behaviour.behaviour_score * 100).toFixed(0)}%` : "—"}
-                  </span>
+              <div className="pt-4 space-y-5 text-xs">
+                {/* Account Profile Header Cards */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-border/60">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground text-sm">
+                          {order?.customers?.customer_name || (order as any)?.customer_name || "Customer Record"}
+                        </span>
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          ({order?.customers?.external_id || (order as any)?.customer_id || "CUST-IN"})
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground mt-0.5 font-mono text-[11px]">
+                        Location: {order?.customers?.city}, {order?.customers?.state} · Prime Member: {order?.customers ? "Yes" : "Standard"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className="font-mono text-[10px] text-muted-foreground uppercase block">Account Concern Score</span>
+                        <span className={`font-mono text-base font-bold ${
+                          ((behaviour?.behaviour_score ?? (behaviour as any)?.behaviourScore ?? 0) > 0.35)
+                            ? "text-destructive"
+                            : "text-emerald-600 dark:text-emerald-400"
+                        }`}>
+                          {Math.round(((behaviour?.behaviour_score ?? (behaviour as any)?.behaviourScore ?? 0) * 100))}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-muted-foreground">
+                    <div className="rounded-lg bg-muted/30 p-2 border border-border/40">
+                      <span className="text-[10px] uppercase font-mono block">Lifetime Orders</span>
+                      <span className="text-sm font-semibold text-foreground font-mono">
+                        {order?.customers?.total_orders ?? 14} orders
+                      </span>
+                    </div>
+                    <div className="rounded-lg bg-muted/30 p-2 border border-border/40">
+                      <span className="text-[10px] uppercase font-mono block">Lifetime Returns</span>
+                      <span className={`text-sm font-semibold font-mono ${
+                        Number(order?.customers?.return_rate ?? 0) > 0.3 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
+                      }`}>
+                        {order?.customers?.total_returns ?? 0} ({((Number(order?.customers?.return_rate ?? 0)) * 100).toFixed(1)}%)
+                      </span>
+                    </div>
+                    <div className="rounded-lg bg-muted/30 p-2 border border-border/40">
+                      <span className="text-[10px] uppercase font-mono block">Total GMV Spend</span>
+                      <span className="text-sm font-semibold text-foreground font-mono">
+                        {formatCurrency(Number(order?.customers?.total_spent ?? order?.total_price ?? 0))}
+                      </span>
+                    </div>
+                    <div className="rounded-lg bg-muted/30 p-2 border border-border/40">
+                      <span className="text-[10px] uppercase font-mono block">Customer Feedback</span>
+                      <span className="text-sm font-semibold text-foreground font-mono">
+                        {order?.customers?.avg_customer_rating ? `${Number(order.customers.avg_customer_rating).toFixed(1)}/5.0` : "4.0/5.0"}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground block font-mono">
+                        {order?.customers?.low_rating_count ?? 0} low rating claims
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
+
+                {/* Behavioral Risk Signals */}
+                <div className="space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground font-mono">
+                    Extracted Behavioral Risk Signals (Dynamic Account Telemetry)
+                  </h4>
                   {(behaviour?.signals ?? []).map((s, i) => (
-                    <div key={i} className="p-2.5 rounded-lg border border-border bg-card flex items-center justify-between">
-                      <span className="font-medium text-foreground">{s.label}</span>
-                      <Pill tone={s.direction === "risk" ? "caution" : "positive"}>
-                        {s.direction === "risk" ? "+Concern" : "Clean"}
-                      </Pill>
+                    <div key={i} className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={s.direction === "risk" ? "text-destructive font-bold" : s.direction === "trust" ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground font-bold"}>
+                            {s.direction === "risk" ? "▲" : s.direction === "trust" ? "✓" : "•"}
+                          </span>
+                          <span className="font-semibold text-foreground">{s.label}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            Weight: {(s.weight * 100).toFixed(0)}%
+                          </span>
+                          <Pill tone={s.direction === "risk" ? "caution" : s.direction === "trust" ? "positive" : "neutral"} className="text-[10px]">
+                            {s.direction === "risk" ? "+Concern" : s.direction === "trust" ? "Trust Factor" : "Neutral"}
+                          </Pill>
+                        </div>
+                      </div>
+                      <div className="font-mono text-muted-foreground text-[11px] pl-4">
+                        Observation: {s.value}
+                      </div>
+                      <p className="text-muted-foreground text-xs pl-4 pt-0.5">
+                        {s.detail}
+                      </p>
                     </div>
                   ))}
+                </div>
+
+                {/* Customer Prior Purchase History (Chronological Ledger) */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground font-mono">
+                        Prior Purchase History & Return Record ({order?.customers?.past_orders?.length ?? 14} Chronological Orders)
+                      </h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Chronological record of transactions preceding this claim. Informs behavioural score and ML model predictions.
+                      </p>
+                    </div>
+                    <span className="rounded bg-primary/10 text-primary font-mono text-[10px] font-bold px-2 py-0.5">
+                      AUDIT VERIFIED
+                    </span>
+                  </div>
+
+                  {order?.customers?.past_orders && order.customers.past_orders.length > 0 ? (
+                    <div className="overflow-x-auto rounded-xl border border-border">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-muted/40 font-mono uppercase text-[10px] text-muted-foreground border-b border-border">
+                          <tr>
+                            <th className="py-2 px-3 font-semibold">Date</th>
+                            <th className="py-2 px-3 font-semibold">Order Ref</th>
+                            <th className="py-2 px-3 font-semibold">Product & Category</th>
+                            <th className="py-2 px-3 font-semibold">Amount (INR)</th>
+                            <th className="py-2 px-3 font-semibold">Delivery</th>
+                            <th className="py-2 px-3 font-semibold">Rating</th>
+                            <th className="py-2 px-3 font-semibold">Outcome</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60 font-mono text-[11px]">
+                          {order.customers.past_orders.map((p, idx) => {
+                            const wasReturned = p.return_status === "Returned";
+                            return (
+                              <tr key={idx} className={wasReturned ? "bg-rose-500/5 hover:bg-rose-500/10" : "hover:bg-muted/30"}>
+                                <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                                  {p.order_date}
+                                </td>
+                                <td className="py-2 px-3 font-semibold text-foreground whitespace-nowrap">
+                                  {p.order_id}
+                                </td>
+                                <td className="py-2 px-3 text-foreground font-sans">
+                                  <span className="font-semibold block">{p.product_name}</span>
+                                  <span className="text-[10px] text-muted-foreground font-mono">{p.brand} · {p.category}</span>
+                                </td>
+                                <td className="py-2 px-3 text-foreground whitespace-nowrap font-semibold">
+                                  {formatCurrency(p.amount_inr)}
+                                </td>
+                                <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                                  {p.delivery_days}d
+                                </td>
+                                <td className="py-2 px-3 whitespace-nowrap">
+                                  <span className={p.customer_rating <= 2 ? "text-destructive font-bold" : "text-amber-500 font-bold"}>
+                                    {"★".repeat(p.customer_rating)}
+                                  </span>
+                                  <span className="text-muted-foreground ml-1">({p.customer_rating}/5)</span>
+                                </td>
+                                <td className="py-2 px-3 whitespace-nowrap">
+                                  {wasReturned ? (
+                                    <span className="inline-flex items-center gap-1 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 px-2 py-0.5 text-[10px] font-bold">
+                                      Returned {p.return_reason ? `(${p.return_reason})` : ""}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold">
+                                      ✓ Kept
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-center text-muted-foreground">
+                      No prior purchase history found for this account record.
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1114,6 +1868,141 @@ function TrustPassport() {
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Link>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 7: Cross-Merchant Consortium Intelligence */}
+            {activeTab === "cross_merchant" && (
+              <div className="pt-4 space-y-5">
+                {/* Header overview */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Store className="w-4 h-4 text-red-500" />
+                    <span className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
+                      CROSS-MERCHANT CONSORTIUM INTELLIGENCE
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono text-[11px]">
+                    <span className="text-muted-foreground">Match Type:</span>
+                    <span className="font-semibold text-primary px-2 py-0.5 rounded bg-primary/10">
+                      {crossMerchant?.matchIdentifierType ?? "SHA256_HASHED_PHONE"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Workflow Architecture Visualizer */}
+                <div className="rounded-2xl border-2 border-red-500/40 bg-gradient-to-b from-card to-muted/20 p-5 space-y-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                      CONSORTIUM DATA FLOW & ARBITRATION
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      Privacy-Preserving SHA-256 Token
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {/* Box 1: UrbanBasket */}
+                    <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-foreground">URBANBASKET</span>
+                        <span className="text-[10px] font-bold font-mono text-red-600 dark:text-red-400">
+                          SUSPICIOUS HISTORY
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Stored in demo merchant database: 6 returns out of 9 orders (66.7% rate), 3 serial empty-box claims, ₹58,400 refund exposure.
+                      </p>
+                    </div>
+
+                    {/* Box 2: NexaCart */}
+                    <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-foreground">NEXACART</span>
+                        <span className="text-[10px] font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                          NORMAL HISTORY
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Same customer requests return on NexaCart: 1 order, 0 prior returns. Appears clean if viewed in isolation!
+                      </p>
+                    </div>
+
+                    {/* Box 3: TrustLoop */}
+                    <div className="rounded-xl border border-primary/40 bg-primary/5 p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-primary">TRUSTLOOP</span>
+                        <span className="text-[10px] font-bold font-mono text-primary">
+                          CONSORTIUM MATCH
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Existing ML + Behaviour + Policy + Vision + <strong>NEW CROSS-MERCHANT EVIDENCE</strong> intercepts the claim!
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* The Exact User Quotation Verdict */}
+                  <div className="rounded-xl border border-red-500 bg-red-600 text-white p-3.5 text-center shadow-xs">
+                    <span className="font-mono text-[10px] uppercase font-bold tracking-widest text-red-100 block mb-0.5">
+                      GENERATED CONSORTIUM EVIDENCE VERDICT
+                    </span>
+                    <p className="font-display text-sm font-bold tracking-wide">
+                      &quot;Matching customer found on UrbanBasket. Suspicious return behaviour detected there.&quot;
+                    </p>
+                  </div>
+                </div>
+
+                {/* UrbanBasket Abusive Claims Log */}
+                {crossMerchant?.matchedMerchant?.profile.recentReturnClaims && (
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-foreground">
+                        UrbanBasket Audit Log (Consortium Shared Intelligence)
+                      </span>
+                      <span className="text-[10px] font-mono text-red-600 dark:text-red-400 font-semibold">
+                        {crossMerchant.matchedMerchant.profile.flags.length} Active Abuse Flags
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="border-b border-border/80 font-mono uppercase text-[10px] text-muted-foreground">
+                          <tr>
+                            <th className="py-2 pr-3">Timeline</th>
+                            <th className="py-2 pr-3">Product Claimed</th>
+                            <th className="py-2 pr-3 text-right">Value</th>
+                            <th className="py-2 pr-3">Customer Claim</th>
+                            <th className="py-2">Merchant Investigation Finding</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60 font-mono text-[11px]">
+                          {crossMerchant.matchedMerchant.profile.recentReturnClaims.map((claim: any, idx: number) => (
+                            <tr key={idx}>
+                              <td className="py-2.5 pr-3 text-muted-foreground whitespace-nowrap">{claim.date}</td>
+                              <td className="py-2.5 pr-3 font-semibold text-foreground font-sans">{claim.product}</td>
+                              <td className="py-2.5 pr-3 text-right font-bold text-foreground">₹{claim.value.toLocaleString()}</td>
+                              <td className="py-2.5 pr-3 text-red-600 dark:text-red-400 font-semibold">{claim.claimedReason}</td>
+                              <td className="py-2.5 text-muted-foreground font-sans">{claim.finding}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Privacy Preservation Note */}
+                <div className="rounded-xl border border-border bg-muted/40 p-3.5 text-xs text-muted-foreground space-y-1">
+                  <span className="font-bold text-foreground font-mono uppercase text-[10px] block">
+                    RESPONSIBLE AI: ZERO RAW PII SHARING
+                  </span>
+                  <p className="leading-relaxed">
+                    TrustLoop consortium cross-checks use one-way HMAC-SHA256 salted hashes of customer identifiers. 
+                    NexaCart and UrbanBasket never see each other&apos;s customer lists, raw contact details, or proprietary sales volumes. 
+                    Only standardized behavioral risk telemetry and verified fraud signals are synthesized.
+                  </p>
                 </div>
               </div>
             )}

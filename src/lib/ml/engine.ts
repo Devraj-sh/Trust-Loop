@@ -143,8 +143,10 @@ function nodeValue(node: XgbNode): number {
     v = node.leaf;
   } else {
     const [a, b] = node.children as [XgbNode, XgbNode];
-    const total = a.cover + b.cover || 1;
-    v = (nodeValue(a) * a.cover + nodeValue(b) * b.cover) / total;
+    const aCover = a?.cover ?? 1;
+    const bCover = b?.cover ?? 1;
+    const total = aCover + bCover || 1;
+    v = (nodeValue(a) * aCover + nodeValue(b) * bCover) / total;
   }
   nodeValueCache.set(node, v);
   return v;
@@ -158,7 +160,8 @@ function predictXgb(x: number[], byName: Record<string, number>) {
     let node = root;
     let prev = nodeValue(node);
     while (node.leaf === undefined) {
-      const children = node.children as XgbNode[];
+      const children = node.children as XgbNode[] | undefined;
+      if (!children || children.length === 0) break;
       const value = byName[node.split!];
       // XGBoost compares in float32; match it exactly or boundary splits diverge.
       const goYes =
@@ -166,13 +169,16 @@ function predictXgb(x: number[], byName: Record<string, number>) {
           ? node.missing === node.yes
           : Math.fround(value) < Math.fround(node.split_condition!);
       const nextId = goYes ? node.yes! : node.no!;
-      const next = children.find((c) => c.nodeid === nextId)!;
+      const next = children.find((c) => c.nodeid === nextId);
+      if (!next) break;
       const cur = nodeValue(next);
       contributions.set(node.split!, (contributions.get(node.split!) ?? 0) + (cur - prev));
       prev = cur;
       node = next;
     }
-    margin += node.leaf!;
+    if (node.leaf !== undefined) {
+      margin += node.leaf;
+    }
   }
   void x;
   return { p: sigmoid(margin), contributions };
@@ -221,6 +227,78 @@ export function runModel(features: FeatureVector, model: ModelKey = "xgboost"): 
     confidence: Math.min(1, Math.abs(p - 0.5) * 2),
     model,
     modelLabel: meta.label,
-    contributions: contributions.slice(0, 12),
+    contributions: contributions.slice(0, 15),
+  };
+}
+
+export interface MultiModelComparison {
+  xgboost: ModelResult;
+  logistic_regression: ModelResult;
+  decision_tree: ModelResult;
+  models: {
+    xgboost: ModelResult;
+    logistic_regression: ModelResult;
+    decision_tree: ModelResult;
+  };
+  consensus: {
+    agreementRate: number;
+    agreement_rate: number;
+    all_agree: boolean;
+    riskTier: RiskLevel;
+    consensus_band: RiskLevel;
+    summary: string;
+    averageRiskScore: number;
+    avg_risk_score: number;
+  };
+}
+
+export function runAllModels(features: FeatureVector): MultiModelComparison {
+  const xgb = runModel(features, "xgboost");
+  const lr = runModel(features, "logistic_regression");
+  const dt = runModel(features, "decision_tree");
+
+  const scores = [xgb.riskScore, lr.riskScore, dt.riskScore];
+  const levels = [xgb.riskLevel, lr.riskLevel, dt.riskLevel];
+  const avg = scores.reduce((a, b) => a + b, 0) / 3;
+
+  const matches =
+    (levels[0] === levels[1] ? 1 : 0) +
+    (levels[1] === levels[2] ? 1 : 0) +
+    (levels[0] === levels[2] ? 1 : 0);
+
+  let agreementRate = 1.0;
+  let summary = `All 3 models agree on ${xgb.riskLevel} return risk (${(avg * 100).toFixed(1)}% average).`;
+
+  if (matches === 1) {
+    agreementRate = 0.67;
+    const majority = levels[0] === levels[1] || levels[0] === levels[2] ? levels[0] : levels[1];
+    summary = `2 of 3 models concur on ${majority} return risk; XGBoost scored ${(xgb.riskScore * 100).toFixed(1)}%.`;
+  } else if (matches === 0) {
+    agreementRate = 0.33;
+    summary = `Model divergence observed: XGBoost ${(xgb.riskScore * 100).toFixed(1)}%, LR ${(lr.riskScore * 100).toFixed(1)}%, Tree ${(dt.riskScore * 100).toFixed(1)}%.`;
+  }
+
+  const allAgree = levels[0] === levels[1] && levels[1] === levels[2];
+  const tier = riskLevel(avg);
+
+  return {
+    xgboost: xgb,
+    logistic_regression: lr,
+    decision_tree: dt,
+    models: {
+      xgboost: xgb,
+      logistic_regression: lr,
+      decision_tree: dt,
+    },
+    consensus: {
+      agreementRate,
+      agreement_rate: agreementRate,
+      all_agree: allAgree,
+      riskTier: tier,
+      consensus_band: tier,
+      summary,
+      averageRiskScore: avg,
+      avg_risk_score: avg,
+    },
   };
 }

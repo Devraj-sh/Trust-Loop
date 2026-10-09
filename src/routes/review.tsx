@@ -71,7 +71,7 @@ function ReviewQueue() {
   const highRiskList = data.filter((r) => r.riskLevel === "HIGH");
   const verifiedList = data.filter((r) => r.decidedByHuman);
 
-  let displayedRows = data;
+  let displayedRows: any[] = data;
   if (filter === "awaiting") displayedRows = awaitingList;
   else if (filter === "high_risk") displayedRows = highRiskList;
   else if (filter === "verified") displayedRows = verifiedList;

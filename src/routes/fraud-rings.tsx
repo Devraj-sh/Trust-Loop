@@ -22,8 +22,10 @@ import {
 import { AppShell, PageHeader } from "@/components/trustloop/app-shell";
 import { EmptyState, Panel, Pill } from "@/components/trustloop/primitives";
 import { RelationshipGraph } from "@/components/trustloop/relationship-graph";
+import { FraudRingGeoMap } from "@/components/trustloop/fraud-ring-geo-map";
 import { listFraudRings } from "@/lib/trustloop/api.functions";
 import type { FraudRingSummary } from "@/lib/trustloop/network";
+import { Map as MapIcon } from "lucide-react";
 
 const ringsQuery = queryOptions({
   queryKey: ["fraud-rings"],
@@ -55,6 +57,7 @@ function FraudRingsPage() {
   const [selectedRingId, setSelectedRingId] = useState<string>(rings[0]?.id || "TL-RING-001");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"geo" | "graph">("geo");
 
   const currentRing: FraudRingSummary =
     rings.find((r) => r.id === selectedRingId) || rings[0]!;
@@ -87,39 +90,83 @@ function FraudRingsPage() {
 
       {/* Main Graph & Investigation Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left: Interactive Graph (7 cols) */}
+        {/* Left: Interactive Graph / Geographical Map (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Network className="w-5 h-5 text-[#1769E0]" />
+              {viewMode === "geo" ? (
+                <MapIcon className="w-5 h-5 text-[#1769E0]" />
+              ) : (
+                <Network className="w-5 h-5 text-[#1769E0]" />
+              )}
               <h2 className="text-base font-bold text-[#0B1F3A]">
-                Entity Relationship Graph
+                {viewMode === "geo"
+                  ? "Geographical Fraud Syndicate Map"
+                  : "Entity Relationship Graph"}
               </h2>
               <span className="text-xs text-slate-500">
-                ({currentRing.nodes.length} nodes · {currentRing.edges.length} edges)
+                {viewMode === "geo"
+                  ? `(${currentRing.locationArea} Corridor)`
+                  : `(${currentRing.nodes.length} nodes · ${currentRing.edges.length} edges)`}
               </span>
             </div>
-            <span className="text-xs font-mono text-slate-400">
-              Interactive Canvas · Drag/Zoom Enabled
-            </span>
+
+            {/* View Switcher: Google Map vs Entity Graph */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+              <button
+                onClick={() => setViewMode("geo")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold transition-all ${
+                  viewMode === "geo"
+                    ? "bg-white text-[#1769E0] shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>🗺️ Google Map</span>
+              </button>
+              <button
+                onClick={() => setViewMode("graph")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold transition-all ${
+                  viewMode === "graph"
+                    ? "bg-white text-[#1769E0] shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Network className="w-3.5 h-3.5" />
+                <span>🕸️ Entity Graph</span>
+              </button>
+            </div>
           </div>
 
-          <RelationshipGraph
-            nodes={currentRing.nodes}
-            edges={currentRing.edges}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
-            height={530}
-          />
+          {viewMode === "geo" ? (
+            <FraudRingGeoMap
+              ring={currentRing}
+              allRings={rings}
+              onSelectRing={setSelectedRingId}
+              height={530}
+            />
+          ) : (
+            <RelationshipGraph
+              nodes={currentRing.nodes}
+              edges={currentRing.edges}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={setSelectedNodeId}
+              height={530}
+            />
+          )}
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs text-slate-600 flex items-start gap-2.5">
             <ShieldAlert className="w-4 h-4 text-[#1769E0] shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-slate-800">
-                Graph Intelligence Insight
+                {viewMode === "geo"
+                  ? "Geographical Fraud Zone Intelligence"
+                  : "Graph Relationship Intelligence Insight"}
               </p>
               <p className="mt-0.5 leading-relaxed">
-                Clicking any node highlights its 1st-degree shared entities. Nodes with pulsing red halos indicate flagged fraud pivots (such as shared device fingerprints or high-velocity drop addresses).
+                {viewMode === "geo"
+                  ? "Red circular fraud zones highlight operational hubs, shared device drop points, and courier reverse logistics routes used by this syndicate across Indian cities."
+                  : "Clicking any node highlights its 1st-degree shared entities. Nodes with pulsing red halos indicate flagged fraud pivots (such as shared device fingerprints or high-velocity drop addresses)."}
               </p>
             </div>
           </div>

@@ -16,6 +16,7 @@ import { Route as FraudRingsRouteImport } from './routes/fraud-rings'
 import { Route as LearningRouteImport } from './routes/learning'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as RiskMapRouteImport } from './routes/risk-map'
+import { Route as UploadRouteImport } from './routes/upload'
 import { Route as ReturnsIdRouteImport } from './routes/returns.$id'
 import { Route as ReturnsNewRouteImport } from './routes/returns.new'
 
@@ -54,6 +55,11 @@ const RiskMapRoute = RiskMapRouteImport.update({
   path: '/risk-map',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UploadRoute = UploadRouteImport.update({
+  id: '/upload',
+  path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReturnsIdRoute = ReturnsIdRouteImport.update({
   id: '/returns/$id',
   path: '/returns/$id',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/learning': typeof LearningRoute
   '/review': typeof ReviewRoute
   '/risk-map': typeof RiskMapRoute
+  '/upload': typeof UploadRoute
   '/returns/$id': typeof ReturnsIdRoute
   '/returns/new': typeof ReturnsNewRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/learning': typeof LearningRoute
   '/review': typeof ReviewRoute
   '/risk-map': typeof RiskMapRoute
+  '/upload': typeof UploadRoute
   '/returns/$id': typeof ReturnsIdRoute
   '/returns/new': typeof ReturnsNewRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/learning': typeof LearningRoute
   '/review': typeof ReviewRoute
   '/risk-map': typeof RiskMapRoute
+  '/upload': typeof UploadRoute
   '/returns/$id': typeof ReturnsIdRoute
   '/returns/new': typeof ReturnsNewRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/learning'
     | '/review'
     | '/risk-map'
+    | '/upload'
     | '/returns/$id'
     | '/returns/new'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/learning'
     | '/review'
     | '/risk-map'
+    | '/upload'
     | '/returns/$id'
     | '/returns/new'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/learning'
     | '/review'
     | '/risk-map'
+    | '/upload'
     | '/returns/$id'
     | '/returns/new'
   fileRoutesById: FileRoutesById
@@ -143,6 +155,7 @@ export interface RootRouteChildren {
   LearningRoute: typeof LearningRoute
   ReviewRoute: typeof ReviewRoute
   RiskMapRoute: typeof RiskMapRoute
+  UploadRoute: typeof UploadRoute
   ReturnsIdRoute: typeof ReturnsIdRoute
   ReturnsNewRoute: typeof ReturnsNewRoute
 }
@@ -198,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RiskMapRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/upload': {
+      id: '/upload'
+      path: '/upload'
+      fullPath: '/upload'
+      preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/returns/$id': {
       id: '/returns/$id'
       path: '/returns/$id'
@@ -223,6 +243,7 @@ const rootRouteChildren: RootRouteChildren = {
   LearningRoute: LearningRoute,
   ReviewRoute: ReviewRoute,
   RiskMapRoute: RiskMapRoute,
+  UploadRoute: UploadRoute,
   ReturnsIdRoute: ReturnsIdRoute,
   ReturnsNewRoute: ReturnsNewRoute,
 }

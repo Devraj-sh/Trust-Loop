@@ -53,35 +53,24 @@ export interface GeoAdjustmentResult {
   };
 }
 
-/** Static centroid lookup for Brazilian states (approximate regional visualization only) */
-export const BRAZIL_STATE_CENTROIDS: Record<string, GeoCentroid> = {
-  SP: { state: "SP", name: "São Paulo", lat: -23.5505, lng: -46.6333, region: "Southeast" },
-  RJ: { state: "RJ", name: "Rio de Janeiro", lat: -22.9068, lng: -43.1729, region: "Southeast" },
-  MG: { state: "MG", name: "Minas Gerais", lat: -19.9167, lng: -43.9345, region: "Southeast" },
-  RS: { state: "RS", name: "Rio Grande do Sul", lat: -30.0346, lng: -51.2177, region: "South" },
-  PR: { state: "PR", name: "Paraná", lat: -25.4284, lng: -49.2733, region: "South" },
-  SC: { state: "SC", name: "Santa Catarina", lat: -27.5954, lng: -48.548, region: "South" },
-  BA: { state: "BA", name: "Bahia", lat: -12.9777, lng: -38.5016, region: "Northeast" },
-  DF: { state: "DF", name: "Distrito Federal", lat: -15.7975, lng: -47.8919, region: "Central-West" },
-  ES: { state: "ES", name: "Espírito Santo", lat: -20.3155, lng: -40.3128, region: "Southeast" },
-  GO: { state: "GO", name: "Goiás", lat: -16.6869, lng: -49.2648, region: "Central-West" },
-  PE: { state: "PE", name: "Pernambuco", lat: -8.0476, lng: -34.877, region: "Northeast" },
-  CE: { state: "CE", name: "Ceará", lat: -3.7319, lng: -38.5267, region: "Northeast" },
-  PA: { state: "PA", name: "Pará", lat: -1.4558, lng: -48.4902, region: "North" },
-  MT: { state: "MT", name: "Mato Grosso", lat: -15.601, lng: -56.0974, region: "Central-West" },
-  MA: { state: "MA", name: "Maranhão", lat: -2.5307, lng: -44.3068, region: "Northeast" },
-  MS: { state: "MS", name: "Mato Grosso do Sul", lat: -20.4697, lng: -54.6201, region: "Central-West" },
-  PB: { state: "PB", name: "Paraíba", lat: -7.1195, lng: -34.845, region: "Northeast" },
-  RN: { state: "RN", name: "Rio Grande do Norte", lat: -5.7945, lng: -35.211, region: "Northeast" },
-  PI: { state: "PI", name: "Piauí", lat: -5.092, lng: -42.8038, region: "Northeast" },
-  AL: { state: "AL", name: "Alagoas", lat: -9.6658, lng: -35.735, region: "Northeast" },
-  SE: { state: "SE", name: "Sergipe", lat: -10.9472, lng: -37.0731, region: "Northeast" },
-  TO: { state: "TO", name: "Tocantins", lat: -10.2491, lng: -48.3243, region: "North" },
-  RO: { state: "RO", name: "Rondônia", lat: -8.7619, lng: -63.9039, region: "North" },
-  AC: { state: "AC", name: "Acre", lat: -9.9753, lng: -67.8249, region: "North" },
-  AM: { state: "AM", name: "Amazonas", lat: -3.119, lng: -60.0217, region: "North" },
-  AP: { state: "AP", name: "Amapá", lat: 0.0355, lng: -51.0705, region: "North" },
-  RR: { state: "RR", name: "Roraima", lat: 2.8235, lng: -60.6758, region: "North" },
+/** Static centroid lookup for Indian states (regional hotspot visualization) */
+export const INDIA_STATE_CENTROIDS: Record<string, GeoCentroid> = {
+  MH: { state: "MH", name: "Maharashtra", lat: 19.7515, lng: 75.7139, region: "West" },
+  DL: { state: "DL", name: "Delhi", lat: 28.7041, lng: 77.1025, region: "North" },
+  KA: { state: "KA", name: "Karnataka", lat: 15.3173, lng: 75.7139, region: "South" },
+  TN: { state: "TN", name: "Tamil Nadu", lat: 11.1271, lng: 78.6569, region: "South" },
+  TS: { state: "TS", name: "Telangana", lat: 18.1124, lng: 79.0193, region: "South" },
+  GJ: { state: "GJ", name: "Gujarat", lat: 22.2587, lng: 71.1924, region: "West" },
+  WB: { state: "WB", name: "West Bengal", lat: 22.9868, lng: 87.855, region: "East" },
+  UP: { state: "UP", name: "Uttar Pradesh", lat: 26.8467, lng: 80.9462, region: "North" },
+  RJ: { state: "RJ", name: "Rajasthan", lat: 27.0238, lng: 74.2179, region: "North" },
+  KL: { state: "KL", name: "Kerala", lat: 10.8505, lng: 76.2711, region: "South" },
+  PB: { state: "PB", name: "Punjab", lat: 31.1471, lng: 75.3412, region: "North" },
+  MP: { state: "MP", name: "Madhya Pradesh", lat: 22.9734, lng: 78.6569, region: "Central" },
+  HR: { state: "HR", name: "Haryana", lat: 29.0588, lng: 76.0856, region: "North" },
+  AP: { state: "AP", name: "Andhra Pradesh", lat: 15.9129, lng: 79.74, region: "South" },
+  BR: { state: "BR", name: "Bihar", lat: 25.0961, lng: 85.3131, region: "East" },
+  OR: { state: "OR", name: "Odisha", lat: 20.9517, lng: 85.0985, region: "East" },
 };
 
 /** Hotspot Score Weights */
@@ -116,8 +105,8 @@ export function computeRegionalHotspots(): AreaHotspotMetric[] {
     }
   > = {};
 
-  // Initialize all known states
-  for (const st of Object.keys(BRAZIL_STATE_CENTROIDS)) {
+  // Initialize all known Indian states
+  for (const st of Object.keys(INDIA_STATE_CENTROIDS)) {
     stateAggs[st] = {
       orders: 0,
       returns: 0,
@@ -131,7 +120,7 @@ export function computeRegionalHotspots(): AreaHotspotMetric[] {
 
   // Aggregate historical orders
   for (const o of orders) {
-    const st = o.customers?.state || "SP";
+    const st = o.customers?.state || "MH";
     if (!stateAggs[st]) {
       stateAggs[st] = {
         orders: 0,
@@ -146,48 +135,51 @@ export function computeRegionalHotspots(): AreaHotspotMetric[] {
     const agg = stateAggs[st];
     agg.orders += 1;
 
-    // Synthetic return criteria matching Olist benchmark (12% baseline return propensity)
-    const isSyntheticReturn =
-      (o.review_score && o.review_score <= 2) ||
-      (o.delivery_delay_days && o.delivery_delay_days > 3) ||
-      (o.freight_ratio && o.freight_ratio > 0.45);
+    // Use Indian dataset observed return behavior
+    const isReturn = o.return_status === "Returned" ||
+      (o.customer_rating && o.customer_rating <= 2) ||
+      (o.review_score && o.review_score <= 2);
 
-    if (isSyntheticReturn) {
+    if (isReturn) {
       agg.returns += 1;
       agg.exposure += Number(o.total_price || 0);
 
-      // Elevated risk if late delivery and low review score
-      if (o.review_score === 1 && o.delivery_delay_days > 2) {
+      // Elevated risk if low rating and high value or suspicious repeat pattern
+      if ((o.customer_rating && o.customer_rating <= 1.5) || (o.customers?.return_rate && o.customers.return_rate > 0.35)) {
         agg.highRisk += 1;
       }
 
-      // Evidence conflicts (e.g. low review but fast delivery or zero delay)
-      if (o.review_score === 1 && o.delivery_delay_days <= 0) {
+      // Evidence conflicts (e.g. claim of defective/damaged with high customer rating)
+      if (o.return_status === "Returned" && (o.customer_rating || o.review_score) >= 4) {
         agg.conflicts += 1;
       }
 
-      const cat = o.category_code || "general";
+      const cat = o.category_name || o.category_code || "Electronics";
       agg.categories[cat] = (agg.categories[cat] || 0) + 1;
+      if (o.return_reason) {
+        agg.reasons[o.return_reason] = (agg.reasons[o.return_reason] || 0) + 1;
+      }
     }
   }
 
-  // Ring counts per state (anchored to detected synthetic fraud networks)
+  // Ring counts per Indian state (anchored to detected synthetic fraud networks)
   const ringCountByState: Record<string, number> = {
-    SP: 4,
-    RJ: 2,
-    MG: 1,
-    PR: 1,
+    MH: 3,
+    DL: 2,
+    KA: 2,
+    TS: 1,
+    TN: 1,
   };
 
   const results: AreaHotspotMetric[] = [];
 
   for (const [st, agg] of Object.entries(stateAggs)) {
-    const centroid = BRAZIL_STATE_CENTROIDS[st] || {
+    const centroid = INDIA_STATE_CENTROIDS[st] || {
       state: st,
       name: `State ${st}`,
-      lat: -14.235,
-      lng: -51.9253,
-      region: "Brazil",
+      lat: 20.5937,
+      lng: 78.9629,
+      region: "India",
     };
 
     const returnRate = agg.orders > 0 ? agg.returns / agg.orders : 0;

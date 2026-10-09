@@ -36,3 +36,10 @@ dist-ssr
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+# Data and SQLite databases
+data/raw/
+data/processed/*.csv
+*.db
+*.sqlite
+

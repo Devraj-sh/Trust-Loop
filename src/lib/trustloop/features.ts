@@ -4,50 +4,64 @@ export interface OrderRow {
   id: string;
   external_id: string;
   category_code: number;
+  customer_id?: string;
+  customer_name?: string;
+  product_name?: string;
+  brand?: string;
+  evidence_image_url?: string | null;
   purchased_at: string;
-  delivered_at: string | null;
-  estimated_delivery_at: string | null;
-  num_items: number;
-  total_price: number;
-  avg_item_price: number;
-  total_freight: number;
-  freight_ratio: number;
-  price_segment: number;
-  review_score: number;
-  has_review_comment: number;
-  actual_delivery_days: number;
-  estimated_delivery_days: number;
-  delivery_delay_days: number;
-  is_late_delivery: number;
-  purchase_month: number;
-  purchase_day_of_week: number;
+  delivered_at?: string | null;
+  num_items?: number;
+  total_price: number; // Final amount in INR
+  original_price?: number;
+  discount_percent?: number;
+  avg_item_price?: number;
+  customer_rating?: number;
+  review_score?: number; // legacy alias for rating
+  delivery_days?: number;
+  actual_delivery_days?: number;
+  payment_method?: string;
+  is_prime_member?: number;
+  is_festival_sale?: number;
+  festival_name?: string;
+  return_status?: string;
+  return_reason?: string | null;
+  order_month?: number;
+  purchase_month?: number;
+  purchase_day_of_week?: number;
 }
 
 export interface CustomerRow {
   id: string;
   external_id: string;
+  customer_name?: string;
   city: string;
   city_code: number;
   state: string;
   state_code: number;
+  is_prime_member?: number;
+  age_group?: string;
+  spending_tier?: string;
   total_orders: number;
-  total_items_purchased: number;
-  avg_items_per_order: number;
   total_spent: number;
   avg_order_value: number;
-  total_freight: number;
-  freight_to_value_ratio: number;
-  total_reviews: number;
-  avg_review_score: number;
-  low_rating_count: number;
-  high_rating_count: number;
-  low_rating_percentage: number;
+  total_returns: number;
+  return_rate: number;
+  average_discount?: number;
   avg_delivery_days: number;
-  late_deliveries: number;
-  late_delivery_percentage: number;
+  avg_customer_rating?: number;
+  low_rating_count: number;
   days_since_last_order: number;
   customer_lifetime_days: number;
   is_one_time_buyer: number;
+  orders_last_7_days?: number;
+  orders_last_30_days?: number;
+  returns_last_7_days?: number;
+  returns_last_30_days?: number;
+  return_value_last_30_days?: number;
+  previous_return_count?: number;
+  previous_return_rate?: number;
+  past_orders?: any[];
 }
 
 export interface CategoryRow {
@@ -59,107 +73,120 @@ export interface CategoryRow {
   low_rating_pct: number;
 }
 
-const n = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0));
+const n = (v: unknown, fallback = 0) => {
+  const num = typeof v === "number" ? v : Number(v ?? fallback);
+  return Number.isFinite(num) ? num : fallback;
+};
 
 /**
- * Assemble the exact 41-column feature vector the models were trained on.
- * Column names and ordering come from the exported feature_columns artifact.
+ * Assemble the exact 38-column Indian feature vector.
+ * Completely free of Olist-specific fields (freight, delay days, etc.)
  */
 export function buildFeatureVector(
   order: OrderRow,
   customer: CustomerRow,
   category: CategoryRow,
 ): FeatureVector {
+  const orderAmt = n(order.total_price);
+  const origPrice = n(order.original_price ?? orderAmt);
+  const discPct = n(order.discount_percent);
+  const delivDays = n(order.delivery_days ?? order.actual_delivery_days ?? 5);
+  const rating = n(order.customer_rating ?? order.review_score ?? 4.0);
+  const prime = n(order.is_prime_member ?? customer.is_prime_member ?? 0);
+  const festival = n(order.is_festival_sale ?? 0);
+
+  const prevRetRate = n(customer.previous_return_rate ?? (customer.total_returns > 0 ? (customer.total_returns - 1) / Math.max(1, customer.total_orders - 1) : 0));
+  const avgSpend = n(customer.avg_order_value || (customer.total_orders > 0 ? customer.total_spent / customer.total_orders : orderAmt) || orderAmt || 1);
+  const valRatio = orderAmt / Math.max(1, avgSpend);
+
+  const purchDate = order.purchased_at ? new Date(order.purchased_at) : new Date();
+  const month = n(order.order_month ?? order.purchase_month ?? purchDate.getMonth() + 1);
+  const dow = n(order.purchase_day_of_week ?? purchDate.getDay());
+
   return {
-    customer_city: n(customer.city_code),
-    customer_state: n(customer.state_code),
-    num_items: n(order.num_items),
-    total_price: n(order.total_price),
-    avg_item_price: n(order.avg_item_price),
-    price_segment: n(order.price_segment),
-    total_freight: n(order.total_freight),
-    freight_ratio: n(order.freight_ratio),
-    product_category: n(order.category_code),
-    review_score: n(order.review_score),
-    has_review_comment: n(order.has_review_comment),
-    actual_delivery_days: n(order.actual_delivery_days),
-    estimated_delivery_days: n(order.estimated_delivery_days),
-    delivery_delay_days: n(order.delivery_delay_days),
-    is_late_delivery: n(order.is_late_delivery),
-    total_orders: n(customer.total_orders),
-    total_items_purchased: n(customer.total_items_purchased),
-    avg_items_per_order: n(customer.avg_items_per_order),
-    total_spent: n(customer.total_spent),
-    avg_order_value: n(customer.avg_order_value),
-    total_freight_cust: n(customer.total_freight),
-    freight_to_value_ratio: n(customer.freight_to_value_ratio),
-    total_reviews: n(customer.total_reviews),
-    avg_review_score: n(customer.avg_review_score),
-    low_rating_count: n(customer.low_rating_count),
-    high_rating_count: n(customer.high_rating_count),
-    low_rating_percentage: n(customer.low_rating_percentage),
-    avg_delivery_days: n(customer.avg_delivery_days),
-    late_deliveries: n(customer.late_deliveries),
-    late_delivery_percentage: n(customer.late_delivery_percentage),
-    days_since_last_order: n(customer.days_since_last_order),
-    customer_lifetime_days: n(customer.customer_lifetime_days),
-    is_one_time_buyer: n(customer.is_one_time_buyer),
-    category_complaint_rate: n(category.complaint_rate),
-    category_dissatisfaction_rate: n(category.dissatisfaction_rate),
-    category_avg_rating: n(category.avg_rating),
-    category_low_rating_pct: n(category.low_rating_pct),
-    purchase_month: n(order.purchase_month),
-    purchase_day_of_week: n(order.purchase_day_of_week),
-    delay_freight_cross: n(order.delivery_delay_days) * n(order.freight_ratio),
-    review_delay_cross: n(order.review_score) * n(order.delivery_delay_days),
+    order_amount: orderAmt,
+    original_price: origPrice,
+    discount_percent: discPct,
+    delivery_days: delivDays,
+    customer_rating: rating,
+    is_prime_member: prime,
+    is_festival_sale: festival,
+    category_code: n(order.category_code),
+    customer_city_code: n(customer.city_code),
+    customer_state_code: n(customer.state_code),
+    order_month: month,
+    order_day_of_week: dow,
+    total_orders: n(customer.total_orders, 1),
+    total_spent: n(customer.total_spent, orderAmt),
+    avg_order_value: avgSpend,
+    total_returns: n(customer.total_returns, 0),
+    return_rate: n(customer.return_rate, 0),
+    average_discount: n(customer.average_discount, discPct),
+    avg_delivery_days: n(customer.avg_delivery_days, delivDays),
+    avg_customer_rating: n(customer.avg_customer_rating, rating),
+    low_rating_count: n(customer.low_rating_count, 0),
+    days_since_last_order: n(customer.days_since_last_order, 30),
+    customer_lifetime_days: n(customer.customer_lifetime_days, 0),
+    is_one_time_buyer: n(customer.is_one_time_buyer, 1),
+    orders_last_7_days: n(customer.orders_last_7_days, 0),
+    orders_last_30_days: n(customer.orders_last_30_days, 0),
+    returns_last_7_days: n(customer.returns_last_7_days, 0),
+    returns_last_30_days: n(customer.returns_last_30_days, 0),
+    return_value_last_30_days: n(customer.return_value_last_30_days, 0),
+    previous_return_count: n(customer.previous_return_count, 0),
+    previous_return_rate: prevRetRate,
+    value_to_avg_spend_ratio: valRatio,
+    category_complaint_rate: n(category.complaint_rate, 0.14),
+    category_dissatisfaction_rate: n(category.dissatisfaction_rate, 0.16),
+    category_avg_rating: n(category.avg_rating, 4.2),
+    category_low_rating_pct: n(category.low_rating_pct, 12.0),
+    discount_return_cross: discPct * prevRetRate,
+    rating_delivery_cross: rating * delivDays,
   };
 }
 
-/** Human-readable labels for the model's feature names. */
+/** Human-readable labels for the Indian e-commerce feature set. */
 export const FEATURE_LABELS: Record<string, string> = {
-  customer_city: "Customer city",
-  customer_state: "Customer state",
-  num_items: "Items in order",
-  total_price: "Order value",
-  avg_item_price: "Average item price",
-  price_segment: "Price segment",
-  total_freight: "Shipping cost",
-  freight_ratio: "Shipping as share of order",
-  product_category: "Product category",
-  review_score: "Order review score",
-  has_review_comment: "Left a written review",
-  actual_delivery_days: "Actual delivery days",
-  estimated_delivery_days: "Promised delivery days",
-  delivery_delay_days: "Days early / late",
-  is_late_delivery: "Delivered late",
-  total_orders: "Lifetime orders",
-  total_items_purchased: "Lifetime items",
-  avg_items_per_order: "Average basket size",
-  total_spent: "Lifetime spend",
-  avg_order_value: "Average order value",
-  total_freight_cust: "Lifetime shipping paid",
-  freight_to_value_ratio: "Lifetime shipping ratio",
-  total_reviews: "Reviews left",
-  avg_review_score: "Average review score",
-  low_rating_count: "1-2 star reviews",
-  high_rating_count: "4-5 star reviews",
-  low_rating_percentage: "Share of low ratings",
-  avg_delivery_days: "Average delivery days",
-  late_deliveries: "Late deliveries",
-  late_delivery_percentage: "Share of late deliveries",
-  days_since_last_order: "Days since last order",
-  customer_lifetime_days: "Customer lifetime (days)",
-  is_one_time_buyer: "One-time buyer",
-  category_complaint_rate: "Category complaint rate",
-  category_dissatisfaction_rate: "Category dissatisfaction rate",
-  category_avg_rating: "Category average rating",
-  category_low_rating_pct: "Category low-rating share",
-  purchase_month: "Purchase month",
-  purchase_day_of_week: "Purchase weekday",
-  delay_freight_cross: "Delay x shipping ratio",
-  review_delay_cross: "Review x delay",
+  order_amount: "Order Amount (INR)",
+  original_price: "Original Price (INR)",
+  discount_percent: "Discount Percentage",
+  delivery_days: "Delivery Days",
+  customer_rating: "Customer Rating",
+  is_prime_member: "Prime Member Status",
+  is_festival_sale: "Festival Sale Order",
+  category_code: "Product Category",
+  customer_city_code: "Customer City",
+  customer_state_code: "Customer State",
+  order_month: "Order Month",
+  order_day_of_week: "Order Day of Week",
+  total_orders: "Historical Orders",
+  total_spent: "Total Historical Spend (INR)",
+  avg_order_value: "Average Order Value (INR)",
+  total_returns: "Total Historical Returns",
+  return_rate: "Historical Return Rate",
+  average_discount: "Average Historical Discount",
+  avg_delivery_days: "Average Delivery Days",
+  avg_customer_rating: "Average Customer Rating",
+  low_rating_count: "1-2 Star Reviews Count",
+  days_since_last_order: "Days Since Last Order",
+  customer_lifetime_days: "Customer Lifetime (Days)",
+  is_one_time_buyer: "One-Time Buyer Status",
+  orders_last_7_days: "Orders in Last 7 Days",
+  orders_last_30_days: "Orders in Last 30 Days",
+  returns_last_7_days: "Returns in Last 7 Days",
+  returns_last_30_days: "Returns in Last 30 Days",
+  return_value_last_30_days: "Return Amount in Last 30 Days (INR)",
+  previous_return_count: "Previous Return Count",
+  previous_return_rate: "Previous Return Rate",
+  value_to_avg_spend_ratio: "Current Order vs. Avg Spend Ratio",
+  category_complaint_rate: "Category Complaint Rate",
+  category_dissatisfaction_rate: "Category Dissatisfaction Rate",
+  category_avg_rating: "Category Average Rating",
+  category_low_rating_pct: "Category Low-Rating Share",
+  discount_return_cross: "Discount x Return Frequency Interaction",
+  rating_delivery_cross: "Rating x Delivery Speed Interaction",
 };
 
 export function featureLabel(name: string): string {
-  return FEATURE_LABELS[name] ?? name;
+  return FEATURE_LABELS[name] ?? name.replace(/_/g, " ");
 }

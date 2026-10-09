@@ -20,7 +20,8 @@ const json = (value: unknown) => value as Json;
 const BUCKET = "return-evidence";
 
 async function db() {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { isSupabaseConfigured, supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  if (!isSupabaseConfigured()) return null;
   return supabaseAdmin;
 }
 
@@ -43,16 +44,18 @@ export const searchOrders = createServerFn({ method: "GET" })
     const qTerm = data.query?.trim().toLowerCase() || "";
     try {
       const supabase = await db();
-      let q = supabase
-        .from("orders")
-        .select(
-          "id, external_id, total_price, purchased_at, delivered_at, review_score, num_items, category_code, customers(external_id, city, state, total_orders)",
-        )
-        .order("purchased_at", { ascending: false })
-        .limit(30);
-      if (qTerm) q = q.ilike("external_id", `%${qTerm}%`);
-      const { data: rows, error } = await q;
-      if (!error && rows && rows.length > 0) return rows;
+      if (supabase) {
+        let q = supabase
+          .from("orders")
+          .select(
+            "id, external_id, total_price, purchased_at, delivered_at, review_score, num_items, category_code, customers(external_id, city, state, total_orders)",
+          )
+          .order("purchased_at", { ascending: false })
+          .limit(30);
+        if (qTerm) q = q.ilike("external_id", `%${qTerm}%`);
+        const { data: rows, error } = await q;
+        if (!error && rows && rows.length > 0) return rows;
+      }
     } catch {
       // Supabase table empty or offline, fall through to bundled dataset
     }
@@ -62,13 +65,41 @@ export const searchOrders = createServerFn({ method: "GET" })
     }
     return (ordersSample as any[])
       .filter((o) => {
-        const ext = (o.external_id || "").toLowerCase();
+        const ext = (o.external_id || o.id || "").toLowerCase();
+        const custName = (o.customer_name || o.customers?.customer_name || "").toLowerCase();
+        const custId = (o.customer_id || o.customer_ext_id || o.customers?.external_id || "").toLowerCase();
+        const prod = (o.product_name || "").toLowerCase();
+        const brand = (o.brand || "").toLowerCase();
+        const cat = (o.category_name || "").toLowerCase();
         const city = (o.customers?.city || "").toLowerCase();
         const state = (o.customers?.state || "").toLowerCase();
-        return ext.includes(qTerm) || city.includes(qTerm) || state.includes(qTerm);
+        return (
+          ext.includes(qTerm) ||
+          custName.includes(qTerm) ||
+          custId.includes(qTerm) ||
+          prod.includes(qTerm) ||
+          brand.includes(qTerm) ||
+          cat.includes(qTerm) ||
+          city.includes(qTerm) ||
+          state.includes(qTerm)
+        );
       })
       .slice(0, 30);
   });
+
+export const getSampleMerchantCsv = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const filePath = path.resolve(process.cwd(), "data", "raw", "india", "merchant_orders_sample.csv");
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, "utf-8");
+    }
+  } catch (err) {
+    console.warn("Could not read local sample CSV file:", err);
+  }
+  return "";
+});
 
 /* --------------------------------- analysis -------------------------------- */
 
@@ -76,7 +107,7 @@ export const submitReturn = createServerFn({ method: "POST" })
   .validator((d: unknown) =>
     z
       .object({
-        orderId: z.string().uuid(),
+        orderId: z.string().min(1),
         reason: reasonEnum,
         condition: conditionEnum,
         description: z.string().max(1000).optional(),
@@ -105,26 +136,28 @@ export const submitReturn = createServerFn({ method: "POST" })
     let customerRow: CustomerRow | null = null;
     let categoryRow: CategoryRow | null = null;
 
-    try {
-      const { data: order } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", data.orderId)
-        .maybeSingle();
+    if (supabase) {
+      try {
+        const { data: order } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("id", data.orderId)
+          .maybeSingle();
 
-      if (order) {
-        const [{ data: customer }, { data: category }] = await Promise.all([
-          supabase.from("customers").select("*").eq("id", order.customer_id).maybeSingle(),
-          supabase.from("product_categories").select("*").eq("code", order.category_code).maybeSingle(),
-        ]);
-        if (customer && category) {
-          orderRow = order as unknown as OrderRow;
-          customerRow = customer as unknown as CustomerRow;
-          categoryRow = category as unknown as CategoryRow;
+        if (order) {
+          const [{ data: customer }, { data: category }] = await Promise.all([
+            supabase.from("customers").select("*").eq("id", order.customer_id).maybeSingle(),
+            supabase.from("product_categories").select("*").eq("code", order.category_code).maybeSingle(),
+          ]);
+          if (customer && category) {
+            orderRow = order as unknown as OrderRow;
+            customerRow = customer as unknown as CustomerRow;
+            categoryRow = category as unknown as CategoryRow;
+          }
         }
+      } catch {
+        // continue to fallback
       }
-    } catch {
-      // continue to fallback
     }
 
     if (!orderRow) {
@@ -133,28 +166,56 @@ export const submitReturn = createServerFn({ method: "POST" })
       );
       if (foundOrder) {
         const foundCustomer = (customersSample as any[]).find(
-          (c) => c.id === foundOrder.customer_id || c.external_id === foundOrder.customer_id,
-        );
+          (c) => c.id === foundOrder.customer_id || c.customer_id === foundOrder.customer_id || c.external_id === foundOrder.customer_ext_id,
+        ) || foundOrder.customers || {
+          id: foundOrder.customer_id,
+          external_id: foundOrder.customer_ext_id || "CUST_00001",
+          city: "Mumbai",
+          city_code: 3020,
+          state: "MH",
+          state_code: 7,
+          total_orders: 4,
+          total_spent: 50000,
+          avg_order_value: 12500,
+          total_returns: 0,
+          return_rate: 0,
+          avg_delivery_days: 4,
+          low_rating_count: 0,
+          days_since_last_order: 30,
+          customer_lifetime_days: 365,
+          is_one_time_buyer: 0,
+        };
+
         const foundCategory = (categoriesSample as any[]).find(
           (c) => c.code === foundOrder.category_code,
-        );
+        ) || {
+          code: foundOrder.category_code ?? 0,
+          name: foundOrder.category_name || "General Merchandise",
+          avg_rating: 4.2,
+          complaint_rate: 0.14,
+          dissatisfaction_rate: 0.16,
+          low_rating_pct: 12.0,
+        };
+
         orderRow = foundOrder as unknown as OrderRow;
         customerRow = foundCustomer as unknown as CustomerRow;
         categoryRow = foundCategory as unknown as CategoryRow;
 
-        try {
-          if (categoryRow) {
-            await supabase.from("product_categories").upsert(categoryRow, { onConflict: "code" });
+        if (supabase) {
+          try {
+            if (categoryRow) {
+              await supabase.from("product_categories").upsert(categoryRow, { onConflict: "code" });
+            }
+            if (customerRow) {
+              await supabase.from("customers").upsert(customerRow as any, { onConflict: "external_id" });
+            }
+            if (orderRow) {
+              const { customers: _, ...cleanOrder } = orderRow as any;
+              await supabase.from("orders").upsert(cleanOrder, { onConflict: "external_id" });
+            }
+          } catch {
+            // ignore
           }
-          if (customerRow) {
-            await supabase.from("customers").upsert(customerRow, { onConflict: "external_id" });
-          }
-          if (orderRow) {
-            const { customers: _, ...cleanOrder } = orderRow as any;
-            await supabase.from("orders").upsert(cleanOrder, { onConflict: "external_id" });
-          }
-        } catch {
-          // ignore
         }
       }
     }
@@ -172,34 +233,38 @@ export const submitReturn = createServerFn({ method: "POST" })
     // 2. Create the return request row.
     let reference = `TL-${Date.now().toString(36).toUpperCase()}`;
     let returnId = crypto.randomUUID();
-    try {
-      const { data: created, error: createError } = await supabase
-        .from("return_requests")
-        .insert({
-          reference,
-          order_id: orderRow.id,
-          reason_code: data.reason,
-          claimed_condition: data.condition,
-          description: data.description ?? null,
-          status: "ANALYSED",
-        })
-        .select("id, reference")
-        .single();
-      if (!createError && created) {
-        returnId = created.id;
-        reference = created.reference;
+    if (supabase) {
+      try {
+        const { data: created, error: createError } = await supabase
+          .from("return_requests")
+          .insert({
+            reference,
+            order_id: orderRow.id,
+            reason_code: data.reason,
+            claimed_condition: data.condition,
+            description: data.description ?? null,
+            status: "ANALYSED",
+          })
+          .select("id, reference")
+          .single();
+        if (!createError && created) {
+          returnId = created.id as any;
+          reference = created.reference;
+        }
+      } catch {
+        // offline fallback
       }
-    } catch {
-      // offline fallback
     }
 
     // 3. Feature construction + model inference.
     const features = buildFeatureVector(orderRow, customerRow, categoryRow);
-    const model = runModel(features, data.model as ModelKey);
+    const { runAllModels } = await import("@/lib/ml/engine");
+    const multiModels = runAllModels(features);
+    const model = multiModels[data.model as ModelKey] || multiModels.xgboost;
     audit.push({
       stage: "model",
-      summary: `${model.modelLabel} scored ${(model.riskScore * 100).toFixed(1)}% return risk (${model.riskLevel}).`,
-      payload: { model: model.model, riskScore: model.riskScore },
+      summary: `${model.modelLabel} scored ${(model.riskScore * 100).toFixed(1)}% return risk (${model.riskLevel}). Top driver: ${model.contributions[0]?.feature || "return_rate"}. Multi-model consensus: ${multiModels.consensus.summary}`,
+      payload: { model: model.model, riskScore: model.riskScore, consensus: multiModels.consensus },
     });
 
     // 4. Policy.
@@ -226,26 +291,32 @@ export const submitReturn = createServerFn({ method: "POST" })
           ? data.image.base64.split(",")[1]!
           : data.image.base64;
 
-      try {
-        const bytes = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0));
-        await supabase.storage
-          .from(BUCKET)
-          .upload(path, bytes, { contentType: data.image.contentType, upsert: true });
-      } catch (uploadErr) {
-        console.warn("Storage upload non-fatal warning:", uploadErr);
-      }
+      if (supabase) {
+        try {
+          const bytes = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0));
+          await supabase.storage
+            .from(BUCKET)
+            .upload(path, bytes, { contentType: data.image.contentType, upsert: true });
+        } catch (uploadErr) {
+          console.warn("Storage upload non-fatal warning:", uploadErr);
+        }
 
-      const { data: imageRow } = await supabase
-        .from("return_images")
-        .insert({
-          return_id: returnId,
-          storage_path: path,
-          content_type: data.image.contentType,
-          byte_size: data.image.byteSize,
-        })
-        .select("id")
-        .single();
-      imageId = imageRow?.id ?? null;
+        try {
+          const { data: imageRow } = await supabase
+            .from("return_images")
+            .insert({
+              return_id: returnId,
+              storage_path: path,
+              content_type: data.image.contentType,
+              byte_size: data.image.byteSize,
+            })
+            .select("id")
+            .single();
+          imageId = imageRow?.id ?? null;
+        } catch {
+          // ignore
+        }
+      }
 
       const { analyseImage } = await import("./vision.server");
       vision = await analyseImage({
@@ -257,18 +328,25 @@ export const submitReturn = createServerFn({ method: "POST" })
         description: data.description ?? null,
       });
 
-      await supabase.from("vision_analyses").insert({
-        return_id: returnId,
-        image_id: imageId,
-        provider: vision.provider,
-        model: vision.model,
-        is_fallback: vision.isFallback,
-        observed_condition: vision.observedCondition,
-        damage_score: vision.damageScore,
-        matches_claim: vision.matchesClaim,
-        findings: json(vision.findings),
-        summary: vision.summary,
-      });
+      if (supabase) {
+        try {
+          await supabase.from("vision_analyses").insert({
+            return_id: returnId,
+            image_id: imageId,
+            provider: vision.provider,
+            model: vision.model,
+            is_fallback: vision.isFallback,
+            observed_condition: vision.observedCondition,
+            damage_score: vision.damageScore,
+            matches_claim: vision.matchesClaim,
+            findings: json(vision.findings),
+            summary: vision.summary,
+          });
+        } catch {
+          // ignore
+        }
+      }
+
       audit.push({
         stage: "vision",
         summary: vision.isFallback
@@ -314,6 +392,28 @@ export const submitReturn = createServerFn({ method: "POST" })
       },
     });
 
+    // 7b. Cross-Merchant Consortium Intelligence (UrbanBasket ⇄ NexaCart)
+    const { evaluateCrossMerchantRisk } = await import("./cross-merchant");
+    const crossMerchant = evaluateCrossMerchantRisk(
+      orderRow.id || orderRow.external_id,
+      customerRow.id || customerRow.external_id,
+      "NexaCart"
+    );
+
+    if (crossMerchant.hasCrossMerchantMatch) {
+      audit.push({
+        stage: "cross_merchant_intelligence",
+        summary: crossMerchant.headline,
+        payload: {
+          currentMerchant: crossMerchant.currentMerchant.name,
+          matchedMerchant: crossMerchant.matchedMerchant?.name,
+          urbanBasketReturns: crossMerchant.matchedMerchant?.profile.totalReturns,
+          urbanBasketReturnRate: crossMerchant.matchedMerchant?.profile.returnRate,
+          flags: crossMerchant.matchedMerchant?.profile.flags,
+        },
+      });
+    }
+
     // 8. Fusion + Layered Investigation Scoring + Decision.
     const fusion = fuseEvidence({
       model,
@@ -323,6 +423,7 @@ export const submitReturn = createServerFn({ method: "POST" })
       reason: data.reason as ReasonCode,
       network,
       geo,
+      crossMerchant,
     });
 
     const investigation = calculateInvestigationScore({
@@ -330,6 +431,7 @@ export const submitReturn = createServerFn({ method: "POST" })
       modelRiskScore: model.riskScore,
       network,
       geo,
+      crossMerchant,
       conflictsCount: fusion.conflicts.length,
     });
 
@@ -340,7 +442,10 @@ export const submitReturn = createServerFn({ method: "POST" })
       vision,
       orderValue: Number(orderRow.total_price),
       network,
+      geo,
+      crossMerchant,
       investigation,
+      reason: data.reason as ReasonCode,
     });
 
     audit.push({
@@ -366,63 +471,65 @@ export const submitReturn = createServerFn({ method: "POST" })
     });
 
     // 9. Persist every stage.
-    try {
-      await Promise.all([
-        supabase.from("predictions").insert({
-          return_id: returnId,
-          model_key: model.model,
-          model_label: model.modelLabel,
-          risk_score: model.riskScore,
-          risk_level: model.riskLevel,
-          confidence: model.confidence,
-          contributions: json(model.contributions),
-          feature_vector: json(features),
-        }),
-        supabase.from("policy_evaluations").insert({
-          return_id: returnId,
-          eligible: policy.eligible,
-          window_days_remaining: policy.windowDaysRemaining,
-          rules: json(policy.rules),
-        }),
-        supabase.from("behaviour_signals").insert({
-          return_id: returnId,
-          behaviour_score: behaviour.behaviourScore,
-          signals: json(behaviour.signals),
-        }),
-        supabase.from("fusion_results").insert({
-          return_id: returnId,
-          trust_score: fusion.trustScore,
-          agreement: fusion.agreement,
-          evidence: json(fusion.evidence),
-          conflicts: json(fusion.conflicts),
-        }),
-        supabase.from("decisions").insert({
-          return_id: returnId,
-          outcome: decision.outcome,
-          source: "SYSTEM",
-          confidence: decision.confidence,
-          rationale: json(decision.rationale),
-        }),
-      ]);
+    if (supabase) {
+      try {
+        await Promise.all([
+          supabase.from("predictions").insert({
+            return_id: returnId,
+            model_key: model.model,
+            model_label: model.modelLabel,
+            risk_score: model.riskScore,
+            risk_level: model.riskLevel,
+            confidence: model.confidence,
+            contributions: json(model.contributions),
+            feature_vector: json(features),
+          }),
+          supabase.from("policy_evaluations").insert({
+            return_id: returnId,
+            eligible: policy.eligible,
+            window_days_remaining: policy.windowDaysRemaining,
+            rules: json(policy.rules),
+          }),
+          supabase.from("behaviour_signals").insert({
+            return_id: returnId,
+            behaviour_score: behaviour.behaviourScore,
+            signals: json(behaviour.signals),
+          }),
+          supabase.from("fusion_results").insert({
+            return_id: returnId,
+            trust_score: fusion.trustScore,
+            agreement: fusion.agreement,
+            evidence: json(fusion.evidence),
+            conflicts: json(fusion.conflicts),
+          }),
+          supabase.from("decisions").insert({
+            return_id: returnId,
+            outcome: decision.outcome,
+            source: "SYSTEM",
+            confidence: decision.confidence,
+            rationale: json(decision.rationale),
+          }),
+        ]);
 
-      await supabase
-        .from("return_requests")
-        .update({
-          status: decision.outcome === "MANUAL_REVIEW" ? "IN_REVIEW" : "ANALYSED",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", returnId);
+        await supabase
+          .from("return_requests")
+          .update({
+            status: decision.outcome === "MANUAL_REVIEW" ? "IN_REVIEW" : "ANALYSED",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", returnId);
 
-      await supabase.from("audit_events").insert(
-        audit.map((a) => ({
-          return_id: returnId,
-          stage: a.stage,
-          summary: a.summary,
-          payload: json(a.payload),
-        })),
-      );
-    } catch {
-      // Supabase offline, persisted via mock store below
+        await supabase.from("audit_events").insert(
+          audit.map((a) => ({
+            return_id: returnId,
+            stage: a.stage,
+            summary: a.summary,
+            payload: json(a.payload),
+          })),
+        );
+      } catch {
+        // Supabase offline, persisted via mock store below
+      }
     }
 
     try {
@@ -447,19 +554,27 @@ export const submitReturn = createServerFn({ method: "POST" })
           networkRisk: network.networkRisk,
           ringId: network.ringId,
           isRingConnected: Boolean(network.ringId),
+          crossMerchant,
+          hasCrossMerchantMatch: crossMerchant.hasCrossMerchantMatch,
           prediction: {
             risk_score: model.riskScore,
             risk_level: model.riskLevel,
             model_label: model.modelLabel,
             confidence: model.confidence,
             contributions: model.contributions,
+            all_models: multiModels,
+            feature_vector: features,
           },
           policy: {
             eligible: policy.eligible,
             window_days_remaining: policy.windowDaysRemaining,
             rules: policy.rules,
           },
-          behaviour,
+          behaviour: {
+            behaviourScore: behaviour.behaviourScore,
+            behaviour_score: behaviour.behaviourScore,
+            signals: behaviour.signals,
+          },
           fusion,
           decisions: [
             {
@@ -472,6 +587,11 @@ export const submitReturn = createServerFn({ method: "POST" })
             },
           ],
           vision,
+          imageUrl: data.image
+            ? (data.image.base64.startsWith("data:")
+                ? data.image.base64
+                : `data:${data.image.contentType};base64,${data.image.base64.split("::")[0]}`)
+            : null,
           events: audit.map((a, idx) => ({
             id: `evt-${Date.now()}-${idx}`,
             stage: a.stage,
@@ -506,10 +626,15 @@ export const submitReturn = createServerFn({ method: "POST" })
 /* ------------------------------- trust passport ----------------------------- */
 
 export const getReturn = createServerFn({ method: "GET" })
-  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .validator((d: unknown) => z.object({ id: z.string().min(1) }).parse(d))
   .handler(async ({ data }) => {
+    const supabase = await db();
+    if (!supabase) {
+      const { getMockReturn } = await import("./mock-store");
+      return getMockReturn(data.id);
+    }
+
     try {
-      const supabase = await db();
       const { data: request, error } = await supabase
         .from("return_requests")
         .select("*")
@@ -518,9 +643,9 @@ export const getReturn = createServerFn({ method: "GET" })
       if (error || !request) throw new Error(error?.message || "Return not found in Supabase");
 
       // Attach order, customer, and category context
-      const foundOrder = (ordersSample as any[]).find((o) => o.id === request.order_id);
+      const foundOrder = (ordersSample as any[]).find((o) => o.id === request.order_id || o.external_id === request.order_id);
       const foundCustomer = foundOrder
-        ? (customersSample as any[]).find((c) => c.id === foundOrder.customer_id)
+        ? (customersSample as any[]).find((c) => c.id === foundOrder.customer_id || c.customer_id === foundOrder.customer_id || c.external_id === foundOrder.customer_ext_id) || foundOrder.customers
         : null;
       const foundCategory = foundOrder
         ? (categoriesSample as any[]).find((c) => c.code === foundOrder.category_code)
@@ -619,8 +744,13 @@ export const listReturns = createServerFn({ method: "GET" })
       .parse(d),
   )
   .handler(async ({ data }) => {
+    const supabase = await db();
+    if (!supabase) {
+      const { listMockReturns } = await import("./mock-store");
+      return listMockReturns(data.onlyReviewable, data.limit);
+    }
+
     try {
-      const supabase = await db();
       const { data: rows, error } = await supabase
         .from("return_requests")
         .select(
@@ -690,9 +820,15 @@ export const submitReview = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
+    const supabase = await db();
+    if (!supabase) {
+      const { saveMockReview } = await import("./mock-store");
+      saveMockReview(data.returnId, data.verdict, data.reviewerName, data.notes);
+      return { agreed: true };
+    }
+
     let agreed = false;
     try {
-      const supabase = await db();
       const { data: current } = await supabase
         .from("decisions")
         .select("id, outcome")
@@ -739,9 +875,8 @@ export const submitReview = createServerFn({ method: "POST" })
         actorName: data.reviewerName,
         summary: `${agreed ? "Confirmed" : "Overrode"} the system decision with ${data.verdict}.`,
         payload: { verdict: data.verdict, agreed },
-      });
+      } as any);
     } catch {
-      // In-memory mock store persistence fallback
       const { saveMockReview } = await import("./mock-store");
       saveMockReview(data.returnId, data.verdict, data.reviewerName, data.notes);
       agreed = true;
@@ -791,9 +926,13 @@ export const getHotspotArea = createServerFn({ method: "GET" })
 /* -------------------------------- overview --------------------------------- */
 
 export const getOverview = createServerFn({ method: "GET" }).handler(async () => {
-  try {
-    const supabase = await db();
-    const [orders, customers, returns, decisions, reviews, predictions, fusions, policies] = await Promise.all([
+  const supabase = await db();
+  if (!supabase) {
+    const { getMockOverview } = await import("./mock-store");
+    return getMockOverview();
+  }
+    try {
+      const [orders, customers, returns, decisions, reviews, predictions, fusions, policies] = await Promise.all([
       supabase.from("orders").select("id", { count: "exact", head: true }),
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase

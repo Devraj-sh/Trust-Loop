@@ -29,8 +29,8 @@ flowchart TB
     DB[(Supabase PostgreSQL)]
     STORAGE[(Supabase Storage\nReturn Evidence)]
 
-    ML[ML Engine\n41 Features]
-    XGB[XGBoost\n139 Gradient-Boosted Trees]
+    ML[ML Engine\n38 Features]
+    XGB[XGBoost\n100 Gradient-Boosted Trees]
     LR[Logistic Regression\nLinear Baseline]
     DT[Decision Tree\nCART Baseline]
 
@@ -70,7 +70,7 @@ Return Request
 Customer + Order + Product + Return Details
       |
       v
-41-Feature ML Risk Prediction
+38-Feature Indian ML Risk Prediction
       |
       +------------------+------------------+------------------+
       |                  |                  |                  |
@@ -248,21 +248,30 @@ Supported condition values include:
 
 ---
 
-# 2. Feature Engineering and ML Risk Prediction
+# 2. Benchmark Dataset & Feature Engineering
 
-TrustLoop constructs a **41-feature vector** from customer, order, and product-category information.
+TrustLoop uses the **Indian Amazon E-Commerce Analytics Benchmark Dataset (2015–2025)** covering over 1.12 million transactions across 100+ Indian cities and 28+ states/UTs. Financial amounts are in Indian Rupees (₹ INR).
 
-The ML layer currently supports three runnable models.
+Source: [kavind950/amazon_sales_analytics](https://github.com/kavind950/amazon_sales_analytics)
+
+TrustLoop constructs a **38-feature vector** strictly adapted to Indian e-commerce data (removing legacy foreign freight/delay dependencies):
+
+- **Order Financials & Discounts:** `order_amount`, `original_price`, `discount_percent`, `value_to_avg_spend_ratio`
+- **Operations & Ratings:** `delivery_days`, `customer_rating`, `is_prime_member`, `is_festival_sale`, `order_month`, `order_day_of_week`
+- **Customer Historical Metrics (19 features):** `total_orders`, `total_spent`, `avg_order_value`, `total_returns`, `return_rate`, `average_discount`, `avg_delivery_days`, `avg_customer_rating`, `low_rating_count`, `days_since_last_order`, `customer_lifetime_days`, `is_one_time_buyer`, `orders_last_7_days`, `orders_last_30_days`, `returns_last_7_days`, `returns_last_30_days`, `return_value_last_30_days`, `previous_return_count`, `previous_return_rate`
+- **Category & Interactions:** `category_code`, `category_complaint_rate`, `category_dissatisfaction_rate`, `category_avg_rating`, `category_low_rating_pct`, `discount_return_cross`, `rating_delivery_cross`
+
+The ML layer supports three runnable models calibrated for this Indian feature schema:
 
 ```mermaid
 flowchart LR
     DATA[Customer + Order + Product Category]
-    FEATURES[Feature Construction\n41 Features]
+    FEATURES[Feature Construction\n38 Indian Features]
     DATA --> FEATURES
 
-    FEATURES --> XGB[XGBoost]
-    FEATURES --> LR[Logistic Regression]
-    FEATURES --> DT[Decision Tree]
+    FEATURES --> XGB[XGBoost India Model]
+    FEATURES --> LR[Logistic Regression Baseline]
+    FEATURES --> DT[Decision Tree Baseline]
 
     XGB --> RESULT[ML Risk Result]
     LR --> RESULT
@@ -274,11 +283,21 @@ flowchart LR
     RESULT --> CONTRIB[Feature Contributions]
 ```
 
-## XGBoost
+## XGBoost India Model
 
-**Primary model:** gradient-boosted trees.
+**Primary model:** gradient-boosted trees trained on Indian e-commerce transactions (`models/xgb_model_india.pkl` and exported runtime `src/lib/ml/artifacts/xgb.json`). Captures complex non-linear combinations of return history, spend deviation, discounts, and regional factors.
 
-The current model artifact contains **139 trees**. It is useful for capturing nonlinear relationships and interactions in structured e-commerce data.
+---
+
+# 2B. Intelligent CSV Upload (`/upload`)
+
+TrustLoop features an end-to-end intelligent CSV ingestion pipeline allowing merchants to upload current orders and historical logs:
+
+1. **Intelligent Column Detection:** Automatically maps order IDs, buyer IDs, purchase dates, INR amounts, and return status with confidence scoring.
+2. **Column Mapping Confirmation:** Allows merchants to review and manually adjust mapped fields.
+3. **Data Validation:** Validates unique orders, customers, dates, and anomalous returns without silent data loss.
+4. **Historical Customer Reconstruction:** When an order is selected, TrustLoop automatically aggregates all preceding orders for that customer and computes all 19 historical features.
+5. **Direct Return Analysis:** Feeds the reconstructed context into the existing TrustLoop return analysis engine (model risk, policy checks, behavioral flags, and explanation) with zero model retraining.
 
 ## Logistic Regression
 
@@ -1106,7 +1125,7 @@ Auditability
 ```mermaid
 flowchart LR
     A[Return Request] --> B[Customer + Order Context]
-    B --> C[41 Feature Vector]
+    B --> C[38 Indian Feature Vector]
     C --> D[ML Prediction]
 
     D --> E1[Policy]

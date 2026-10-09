@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ShieldAlert,
+  Upload,
 } from "lucide-react";
 
 const overviewQuery = queryOptions({ queryKey: ["overview"], queryFn: () => getOverview() });
@@ -91,7 +92,7 @@ const ARCHITECTURE_STAGES = [
     step: "02",
     id: "features",
     name: "Feature Vector",
-    tag: "41 FEATURES",
+    tag: "38 FEATURES",
     icon: (
       <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -99,9 +100,9 @@ const ARCHITECTURE_STAGES = [
         <line x1="12" y1="22.08" x2="12" y2="12" />
       </svg>
     ),
-    summary: "Transforms order, freight ratio, delivery delay, and customer history into 41 engineered model features.",
+    summary: "Transforms order financials, discount, customer history, and delivery metrics into 38 engineered Indian model features.",
     inputs: "Order context, Customer lifetime metrics, Product category stats",
-    outputs: "Normalized 41-dimensional vector (IEEE float array)",
+    outputs: "Normalized 38-dimensional vector (IEEE float array)",
   },
   {
     step: "03",
@@ -116,7 +117,7 @@ const ARCHITECTURE_STAGES = [
       </svg>
     ),
     summary: "Evaluates return probability using trained XGBoost trees. Outputs risk score & feature attributions.",
-    inputs: "41-feature vector",
+    inputs: "38-feature vector",
     outputs: "Risk Probability (0-100%), Risk Band (LOW/MED/HIGH), Top Drivers",
   },
   {
@@ -335,6 +336,14 @@ function Overview() {
                 </Link>
 
                 <Link
+                  to="/upload"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-400/40 px-4 py-2.5 text-xs font-bold transition-all hover:bg-emerald-500/30"
+                >
+                  <Upload className="size-3.5" />
+                  <span>Upload Order CSV</span>
+                </Link>
+
+                <Link
                   to="/returns/new"
                   search={{ scenario: "scenario-4-conflict" }}
                   className="inline-flex items-center gap-1.5 rounded-full bg-white border-2 border-amber-400 px-3.5 py-2 text-xs font-bold text-amber-900 shadow-[0_2px_0_0_#D97706] transition-all hover:bg-amber-50"
@@ -438,7 +447,7 @@ function Overview() {
         <PageHeader
           eyebrow="TRUSTLOOP 2.0 COMMAND CENTER"
           title="Return Fraud & Risk Intelligence Overview"
-          description="Real-time multi-layered signals computed across 4,981 Brazilian logistics records, graph relationship intelligence, and regional return hotspots."
+          description="Real-time multi-layered signals computed across Indian logistics records, graph relationship intelligence, and regional return hotspots."
         />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
